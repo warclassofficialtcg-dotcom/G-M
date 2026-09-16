@@ -198,7 +198,9 @@
 
     // --- griglia settimanale: righe = orari, colonne = giorni (domenica chiusa: esclusa)
     const days = c.days.filter((d) => d.weekday !== "Domenica");
-    const hours = [...new Set(days.flatMap((d) => d.slots.map((s) => s.hour)))].sort((a, b) => a - b);
+    const all = days.flatMap((d) => d.slots.map((s) => s.hour));
+    const hours = [];  // tutte le ore dalla prima all'ultima: quelle senza slot (pausa 13-15) restano in rosso
+    for (let h = Math.min(...all); h <= Math.max(...all); h++) hours.push(h);
     const head = `<tr><th class="th-time"></th>${days.map((d) =>
       `<th class="${d.is_today ? "today" : ""}"><span class="wd">${d.weekday.slice(0, 3)}</span><span class="dn">${d.day}</span></th>`).join("")}</tr>`;
 

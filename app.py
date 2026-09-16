@@ -116,8 +116,9 @@ MASSAGE_CATEGORIES = {
 }
 
 # Orari (ultimo orario = ultimo slot prenotabile, durata 1 ora)
-GYM_HOURS = {"weekday": [11, 12, 15, 16, 17, 18, 19], "saturday": [11, 12, 13, 14, 15, 16]}   # 13-15 pausa pranzo
-MASSAGE_HOURS = {"weekday": list(range(10, 20)), "saturday": [10, 11, 12, 13]}                 # lun-ven 10-19, sab 10-13
+# 13-15 pausa pranzo tutti i giorni (nessuna prenotazione)
+GYM_HOURS = {"weekday": [11, 12, 15, 16, 17, 18, 19], "saturday": [11, 12, 15, 16]}
+MASSAGE_HOURS = {"weekday": [10, 11, 12, 15, 16, 17, 18, 19], "saturday": [10, 11, 12]}
 DAY_NAMES = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
 ACTIVE_STATUSES = ("pending", "confirmed")
 
@@ -214,15 +215,20 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # colonna già presente
     payments.PACKAGES_REF = PACKAGES
-    # crea l'admin (titolare) se non esiste
-    row = db.execute("SELECT id FROM users WHERE email = ?", (CONFIG["ADMIN_EMAIL"].lower(),)).fetchone()
+    # crea l'admin (titolare) se non esiste; se esiste, riallinea password e ruolo alla
+    # configurazione (così cambiare ADMIN_PASSWORD sull'hosting basta un riavvio)
+    admin_email = CONFIG["ADMIN_EMAIL"].strip().lower()
+    admin_pw = str(CONFIG["ADMIN_PASSWORD"]).strip()
+    row = db.execute("SELECT id, password_hash FROM users WHERE email = ?", (admin_email,)).fetchone()
     if not row:
         cur = db.execute(
             "INSERT INTO users(name,email,phone,password_hash,role,created_at) VALUES (?,?,?,?,?,?)",
-            (CONFIG["OWNER_NAME"], CONFIG["ADMIN_EMAIL"].lower(), CONFIG["OWNER_WHATSAPP"],
-             generate_password_hash(CONFIG["ADMIN_PASSWORD"]), "admin", now_iso()),
+            (CONFIG["OWNER_NAME"], admin_email, CONFIG["OWNER_WHATSAPP"],
+             generate_password_hash(admin_pw), "admin", now_iso()),
         )
         db.execute("INSERT INTO sheets(user_id) VALUES (?)", (cur.lastrowid,))
+    elif not check_password_hash(row[1], admin_pw):
+        db.execute("UPDATE users SET password_hash=?, role='admin' WHERE id=?", (generate_password_hash(admin_pw), row[0]))
     db.commit()
     db.close()
 
@@ -457,7 +463,7 @@ def api_register():
 def api_login():
     data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
-    password = data.get("password") or ""
+    password = (data.get("password") or "").strip()
     u = get_db().execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
     if not u or not check_password_hash(u["password_hash"], password):
         return jsonify(error="Email o password errati"), 401

@@ -30,7 +30,7 @@ Web-app per la prenotazione di allenamenti e massaggi con conferma del titolare 
 - Si registra con nome, email, telefono e password.
 - Sezione **Allenamento**: pacchetto attivo, scheda, dieta, listino (70€ = 2/settimana, 80€ = 3/settimana, 30€ scheda o dieta).
 - Sezione **Massaggi**: listino dal volantino (olistici/estetici e tecnici/sportivi, con benefici e prezzi), percorsi mensili Standard 150€ (4 massaggi) e Benessere 200€ (6 massaggi) acquistabili online, i propri massaggi.
-- **Calendario** settimanale unico con orari diversi per tipo — palestra Lun–Ven 11–13 e 15–19, Sab 11–16; massaggi Lun–Ven 10–19, Sab 10–13 — clicca il giorno → l'ora → Palestra o Massaggio (con scelta del trattamento) → **Prenota**.
+- **Calendario** settimanale unico con orari diversi per tipo — palestra Lun–Ven 11–12 e 15–19, Sab 11–12 e 15–16; massaggi Lun–Ven 10–12 e 15–19, Sab 10–12 (13–15 pausa tutti i giorni) — clicca il giorno → l'ora → Palestra o Massaggio (con scelta del trattamento) → **Prenota**.
   Si apre WhatsApp con il messaggio già pronto da inviare al titolare (contiene il link di conferma).
 - Il calendario è visibile a tutti: mostra chi si allena e quando, e permette di **unirsi a una lezione** già confermata.
 
