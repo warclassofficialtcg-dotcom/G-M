@@ -27,6 +27,7 @@
   <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></symbol>
   <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
   <symbol id="i-logout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
   <symbol id="i-pdf" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 15h6M9 11h2"/></symbol>
   <symbol id="i-move" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
   <symbol id="i-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></symbol>
@@ -83,9 +84,9 @@
 
   <nav class="mainnav">
     <button class="navbtn active" data-view="calendar"><svg><use href="#i-calendar"/></svg><span>Calendario</span></button>
-    <button class="navbtn" data-view="training"><svg><use href="#i-dumbbell"/></svg><span>Allenamento</span></button>
-    <button class="navbtn" data-view="massage"><svg><use href="#i-spa"/></svg><span>Massaggi</span></button>
-    <button class="navbtn" data-view="mine"><svg><use href="#i-list"/></svg><span>I miei</span></button>
+    <button class="navbtn" data-view="training"><svg><use href="#i-dumbbell"/></svg><span>Allenamenti</span></button>
+    <button class="navbtn" data-view="services"><svg><use href="#i-grid"/></svg><span>Servizi</span></button>
+    <button class="navbtn" data-view="mine"><svg><use href="#i-list"/></svg><span>Appuntamenti</span></button>
     <button class="navbtn hidden" data-view="admin" id="nav-admin"><svg><use href="#i-settings"/></svg><span>Gestione</span></button>
   </nav>
 
@@ -148,11 +149,6 @@
         <pre id="sheet-diet" class="sheet"></pre>
       </div>
       <div class="card">
-        <h2>Listino</h2>
-        <div id="payments-notice"></div>
-        <ul class="pricelist" id="pricelist"></ul>
-      </div>
-      <div class="card">
         <h2>I tuoi pagamenti</h2>
         <div id="my-payments"></div>
       </div>
@@ -160,26 +156,44 @@
     </section>
 
     <!-- MASSAGGI -->
-    <section id="view-massage" class="view hidden">
-      <div class="page-head"><h1>Massaggi</h1></div>
-      <div id="massage-package-box"></div>
-      <button class="btn primary full lg" id="btn-book-massage">Prenota un massaggio</button>
-      <div id="massage-catalog"></div>
-      <div class="card">
-        <h2>Percorsi mensili</h2>
-        <p class="small muted" style="margin-top:-.4rem">Massaggi a scelta libera dal listino, validità 30 giorni.</p>
-        <div id="massage-payments-notice"></div>
-        <ul class="pricelist" id="massage-pricelist"></ul>
+    <section id="view-services" class="view hidden">
+      <div class="page-head"><h1>Servizi</h1></div>
+      <div class="jump-bar">
+        <button class="jump" data-jump="svc-training"><svg><use href="#i-dumbbell"/></svg> Allenamenti</button>
+        <button class="jump massaggio" data-jump="svc-massage"><svg><use href="#i-spa"/></svg> Massaggi</button>
       </div>
-      <div class="card">
-        <h2>I tuoi massaggi</h2>
-        <div id="my-massages"></div>
+
+      <div id="svc-training" class="svc-section">
+        <div class="svc-head"><svg><use href="#i-dumbbell"/></svg><h2>Allenamenti</h2></div>
+        <div class="hero">
+          <h2>Palestra su appuntamento</h2>
+          <p>Lun–Ven 11–12 e 15–19, Sab 11–12 e 15–16. Con l'abbonamento mensile prenoti i tuoi allenamenti dal calendario e puoi unirti alle lezioni già confermate.</p>
+          <button class="btn light" id="btn-svc-book-training">Prenota un allenamento</button>
+        </div>
+        <div class="card">
+          <h2>Abbonamenti e servizi</h2>
+          <div id="payments-notice"></div>
+          <ul class="pricelist" id="pricelist"></ul>
+        </div>
+      </div>
+
+      <div id="svc-massage" class="svc-section">
+        <div class="svc-head massaggio"><svg><use href="#i-spa"/></svg><h2>Massaggi</h2></div>
+        <div id="massage-package-box"></div>
+        <button class="btn primary full lg" id="btn-book-massage">Prenota un massaggio</button>
+        <div id="massage-catalog"></div>
+        <div class="card">
+          <h2>Percorsi mensili</h2>
+          <p class="small muted" style="margin-top:-.4rem">Massaggi a scelta libera dal listino, un mese dal pagamento.</p>
+          <div id="massage-payments-notice"></div>
+          <ul class="pricelist" id="massage-pricelist"></ul>
+        </div>
       </div>
     </section>
 
     <!-- I MIEI APPUNTAMENTI -->
     <section id="view-mine" class="view hidden">
-      <div class="page-head"><h1>I miei appuntamenti</h1></div>
+      <div class="page-head"><h1>Appuntamenti</h1></div>
       <div class="card">
         <div id="my-appointments"></div>
       </div>

@@ -94,7 +94,7 @@
     $$(".navbtn").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
     if (name === "calendar") loadCalendar();
     if (name === "training") renderTraining();
-    if (name === "massage") renderMassage();
+    if (name === "services") renderServices();
     if (name === "mine") renderMine();
     if (name === "admin") renderAdmin();
     window.scrollTo({ top: 0 });
@@ -111,6 +111,13 @@
     state.bookingType = "palestra"; showView("calendar");
   });
   $("#btn-book-massage").addEventListener("click", () => { state.bookingType = "massaggio"; state.bookingService = null; showView("calendar"); });
+  $("#btn-svc-book-training").addEventListener("click", () => $("#btn-book-training").click());
+  $$("[data-jump]").forEach((b) => b.addEventListener("click", () => {
+    $$("[data-jump]").forEach((x) => x.classList.toggle("active", x === b));
+    const el = $("#" + b.dataset.jump);
+    const top = el.getBoundingClientRect().top + window.scrollY - ($(".topbar").offsetHeight + $(".jump-bar").offsetHeight + 20);
+    window.scrollTo({ top, behavior: "smooth" });
+  }));
 
   // ------------------------------------------------------------ Boot
   async function boot() {
@@ -135,7 +142,7 @@
       if (esito === "ok") toast("Pagamento ricevuto: pacchetto attivato");
       else if (esito === "annullato") toast("Pagamento annullato", true);
       else toast("Pagamento non completato: " + (q.get("msg") || ""), true);
-      showView("training");
+      showView(esito === "ok" ? "training" : "services");
       return;
     }
     showView("calendar");
@@ -384,7 +391,7 @@
       <button class="btn primary full lg" id="btn-go-training">Vai all'abbonamento</button>
       <button class="btn full" id="btn-np-close" style="margin-bottom:0">Chiudi</button>
     `);
-    $("#btn-go-training").addEventListener("click", () => { closeModal(); showView("training"); });
+    $("#btn-go-training").addEventListener("click", () => { closeModal(); showView("services"); });
     $("#btn-np-close").addEventListener("click", closeModal);
   }
 
@@ -559,22 +566,6 @@
 
     $("#sheet-workout").textContent = me.sheets.workout || "La tua scheda non è ancora stata caricata dal titolare.";
     $("#sheet-diet").textContent = me.sheets.diet || "La tua dieta non è ancora stata caricata dal titolare.";
-    const pay = me.payments || {};
-    const canBuy = pay.live || pay.simulated;
-    $("#payments-notice").innerHTML = pay.simulated
-      ? `<p class="alert info small">Pagamenti in modalità prova: nessun addebito reale.</p>`
-      : pay.problem && me.user.role === "admin" ? `<p class="alert warn small">${esc(pay.problem)}</p>` : "";
-    $("#pricelist").innerHTML = Object.entries(me.catalog).filter(([, p]) => p.family !== "massaggio").map(([k, p]) =>
-      `<li>
-        <div class="main">
-          <div class="title">${esc(p.label.split(" – ")[0])}</div>
-          <div class="sub">${p.per_week ? `${p.per_week} allenamenti a settimana · un mese dal pagamento` : "validità un mese"}</div>
-        </div>
-        <strong class="price">${p.price}€${p.monthly ? "<span class='muted small'>/mese</span>" : ""}</strong>
-        ${canBuy ? `<button class="btn primary small" data-buy="${k}">${p.monthly ? (gp.active && gp.type === k ? "Rinnova" : "Paga il mese") : "Acquista"}</button>` : ""}
-      </li>`).join("");
-    bindBuyButtons($("#pricelist"));
-
     const hist = me.payment_history || [];
     $("#my-payments").innerHTML = hist.length ? hist.map((h) => paymentItem(h)).join("")
       : `<p class="empty">Nessun pagamento effettuato.</p>`;
@@ -603,9 +594,27 @@
     </div>`;
   }
 
-  // ------------------------------------------------------------ Massaggi
-  function renderMassage() {
+  // ------------------------------------------------------------ Servizi (allenamenti + massaggi)
+  function renderServices() {
     const me = state.me;
+    const gp = me.gym_package || {};
+    const pay = me.payments || {};
+    const canBuy = pay.live || pay.simulated;
+    $("#payments-notice").innerHTML = pay.simulated
+      ? `<p class="alert info small">Pagamenti in modalità prova: nessun addebito reale.</p>`
+      : pay.problem && me.user.role === "admin" ? `<p class="alert warn small">${esc(pay.problem)}</p>` : "";
+    $("#pricelist").innerHTML = Object.entries(me.catalog).filter(([, p]) => p.family !== "massaggio").map(([k, p]) =>
+      `<li>
+        <div class="main">
+          <div class="title">${esc(p.label.split(" – ")[0])}</div>
+          <div class="sub">${p.per_week ? `${p.per_week} allenamenti a settimana · un mese dal pagamento` : "validità un mese"}</div>
+        </div>
+        <strong class="price">${p.price}€${p.monthly ? "<span class='muted small'>/mese</span>" : ""}</strong>
+        ${canBuy ? `<button class="btn primary small" data-buy="${k}">${p.monthly ? (gp.active && gp.type === k ? "Rinnova" : "Paga il mese") : "Acquista"}</button>` : ""}
+      </li>`).join("");
+    bindBuyButtons($("#pricelist"));
+
+
     const pkg = me.packages.find((p) => p.info && p.info.per_month);
     const used = me.appointments.filter((a) => a.type === "massaggio").length;
     $("#massage-package-box").innerHTML = pkg
@@ -636,8 +645,6 @@
       state.bookingType = "massaggio"; state.bookingService = b.dataset.svc; showView("calendar");
     }));
 
-    const pay = me.payments || {};
-    const canBuy = pay.live || pay.simulated;
     $("#massage-payments-notice").innerHTML = pay.simulated ? `<p class="alert info small">Pagamenti in modalità prova: nessun addebito reale.</p>` : "";
     $("#massage-pricelist").innerHTML = Object.entries(me.catalog).filter(([, p]) => p.family === "massaggio").map(([k, p]) => `
       <li>
@@ -647,11 +654,6 @@
       </li>`).join("");
     bindBuyButtons($("#massage-pricelist"));
 
-    const list = me.appointments.filter((a) => a.type === "massaggio");
-    const box = $("#my-massages");
-    box.innerHTML = list.length ? list.map((a) => appointmentItem(a, { resend: a.status === "pending", cancel: true })).join("")
-      : `<p class="empty">Nessun massaggio prenotato.</p>`;
-    bindAppointmentButtons(box, renderMassage);
   }
 
   // ------------------------------------------------------------ I miei appuntamenti
