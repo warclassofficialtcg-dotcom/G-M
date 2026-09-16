@@ -151,9 +151,24 @@
   async function refreshMe() { state.me = await api("/api/me"); }
 
   // ------------------------------------------------------------ Calendario
+  let calLoading = false;
   async function loadCalendar(week) {
-    const q = week || state.week ? `?week=${week || state.week}` : "";
-    state.calendar = await api("/api/calendar" + q);
+    if (calLoading) return;
+    calLoading = true;
+    const wrap = $("#grid"), title = $("#week-title");
+    wrap.classList.add("loading");
+    if (week) title.innerHTML = `<span class="spin"></span> Caricamento…`;
+    try {
+      const q = week || state.week ? `?week=${week || state.week}` : "";
+      state.calendar = await api("/api/calendar" + q);
+    } catch (e) {
+      toast("Connessione lenta o assente: riprova tra qualche secondo", true);
+      if (state.calendar) renderCalendar();
+      return;
+    } finally {
+      calLoading = false;
+      wrap.classList.remove("loading");
+    }
     state.week = state.calendar.week_start;
     // giorno selezionato: mantieni se nella settimana, altrimenti oggi o primo giorno aperto
     const days = state.calendar.days;
@@ -164,8 +179,20 @@
     }
     renderCalendar();
   }
-  $("#week-prev").addEventListener("click", () => loadCalendar(state.calendar.prev_week));
-  $("#week-next").addEventListener("click", () => loadCalendar(state.calendar.next_week));
+  $("#week-prev").addEventListener("click", () => state.calendar && loadCalendar(state.calendar.prev_week));
+  $("#week-next").addEventListener("click", () => state.calendar && loadCalendar(state.calendar.next_week));
+  // swipe orizzontale sul calendario: settimana precedente / successiva
+  (() => {
+    let x0 = null, y0 = null;
+    const g = $("#grid");
+    g.addEventListener("touchstart", (e) => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
+    g.addEventListener("touchend", (e) => {
+      if (x0 === null || !state.calendar) return;
+      const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
+      x0 = y0 = null;
+      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) loadCalendar(dx < 0 ? state.calendar.next_week : state.calendar.prev_week);
+    }, { passive: true });
+  })();
 
   function renderCalendar() {
     const c = state.calendar;

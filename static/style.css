@@ -201,7 +201,13 @@ input::placeholder { color: #a0a8b8; }
 
 /* --- calendario --- */
 .week-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: .9rem; }
-.week-title { font-weight: 700; font-size: .95rem; text-transform: capitalize; }
+.week-nav .icon-btn { width: 44px; height: 44px; border-radius: 12px; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.week-nav .icon-btn:active { background: var(--palestra-bg); color: var(--palestra); }
+.week-nav .icon-btn svg { width: 22px; height: 22px; }
+.grid-wrap.loading { opacity: .45; pointer-events: none; transition: opacity .15s; }
+.spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin .7s linear infinite; vertical-align: -2px; margin-right: .3rem; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.week-title { font-weight: 700; font-size: .95rem; text-transform: capitalize; text-align: center; flex: 1; }
 /* --- griglia settimanale: 6 giorni x orari, sempre a tutta larghezza, senza scorrimento --- */
 .grid-wrap { width: 100%; }
 table.cal { border-collapse: separate; border-spacing: 4px; width: 100%; table-layout: fixed; margin: 0 -4px; }
