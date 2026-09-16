@@ -12,6 +12,7 @@ from functools import wraps
 from urllib.parse import quote
 
 from flask import Flask, g, jsonify, redirect, render_template, request, session
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import payments
@@ -68,6 +69,7 @@ STATIC_VERSION = str(int(os.path.getmtime(os.path.join(BASE_DIR, "static", "app.
 app = Flask(__name__, static_folder="static", template_folder="templates")
 app.secret_key = CONFIG["SECRET_KEY"]
 app.json.sort_keys = False  # mantiene l'ordine del listino
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)  # dietro il proxy dell'hosting: https e host corretti
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 
@@ -316,7 +318,7 @@ def whatsapp_message(appt, user):
     m = MASSAGES.get(appt["massage_type"] or "") if appt["type"] == "massaggio" else None
     if m:
         tipo = f"MASSAGGIO – {m['name']} ({m['price']}€)"
-    link = f"{CONFIG['BASE_URL'].rstrip('/')}/conferma/{appt['token']}"
+    link = f"{base_url()}/conferma/{appt['token']}"
     if appt["joined"]:
         return (f"Ciao! Sono {user['name']}.\n"
                 f"Mi unisco alla lezione di *{tipo}* di {fmt_date_it(d)} alle {appt['hour']:02d}:00.\n"
@@ -325,6 +327,14 @@ def whatsapp_message(appt, user):
             f"Richiesta appuntamento *{tipo}*\n"
             f"📅 {fmt_date_it(d)} alle {appt['hour']:02d}:00\n"
             f"Conferma o rifiuta qui: {link}")
+
+
+def base_url():
+    """BASE_URL dal config; se non impostato (o localhost) usa l'indirizzo con cui è stata chiamata l'app."""
+    cfg = (CONFIG.get("BASE_URL") or "").rstrip("/")
+    if not cfg or "localhost" in cfg or "127.0.0.1" in cfg:
+        return request.url_root.rstrip("/")
+    return cfg
 
 
 def whatsapp_url(msg):
@@ -671,7 +681,7 @@ def api_payments_start():
     data = request.get_json(silent=True) or {}
     try:
         r = payments.start_purchase(get_db(), g.user, data.get("type"), PACKAGES,
-                                    CONFIG["BASE_URL"].rstrip("/"), CONFIG.get("APP_NAME", "G & M"))
+                                    base_url(), CONFIG.get("APP_NAME", "G & M"))
     except ValueError as e:
         return jsonify(error=str(e)), 400
     return jsonify(r)
