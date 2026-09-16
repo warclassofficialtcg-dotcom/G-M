@@ -78,8 +78,8 @@ app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 # ---------------------------------------------------------------------------
 # family: 'palestra' (limite settimanale) | 'massaggio' (limite mensile) | 'extra'
 PACKAGES = {
-    "70": {"label": "Pacchetto 70€ – 2 allenamenti a settimana", "price": 70, "per_week": 2, "family": "palestra"},
-    "80": {"label": "Pacchetto 80€ – 3 allenamenti a settimana", "price": 80, "per_week": 3, "family": "palestra"},
+    "70": {"label": "Abbonamento 70€ – 2 allenamenti a settimana", "price": 70, "per_week": 2, "family": "palestra", "monthly": True},
+    "80": {"label": "Abbonamento 80€ – 3 allenamenti a settimana", "price": 80, "per_week": 3, "family": "palestra", "monthly": True},
     "scheda": {"label": "Scheda allenamento – 30€", "price": 30, "per_week": None, "family": "extra"},
     "dieta": {"label": "Dieta – 30€", "price": 30, "per_week": None, "family": "extra"},
     "standard": {"label": "Percorso Standard – 4 massaggi al mese", "price": 150, "per_month": 4, "family": "massaggio"},
@@ -208,11 +208,12 @@ def init_db():
     db = sqlite3.connect(DB_PATH)
     db.executescript(SCHEMA)
     db.executescript(payments.SCHEMA)
-    for m in MIGRATIONS:
+    for m in MIGRATIONS + payments.MIGRATIONS:
         try:
             db.execute(m)
         except sqlite3.OperationalError:
             pass  # colonna già presente
+    payments.PACKAGES_REF = PACKAGES
     # crea l'admin (titolare) se non esiste
     row = db.execute("SELECT id FROM users WHERE email = ?", (CONFIG["ADMIN_EMAIL"].lower(),)).fetchone()
     if not row:
@@ -297,6 +298,19 @@ def massage_limit(db, user_id, on: date):
     return None, None
 
 
+def gym_package_status(db, user_id):
+    """Abbonamento palestra: attivo/scaduto, scadenza e giorni rimanenti (serve per prenotare)."""
+    limit, pkg = training_limit(db, user_id, date.today())
+    if pkg:
+        end = date.fromisoformat(pkg["end_date"])
+        return {"active": True, "type": pkg["type"], "per_week": limit, "start_date": pkg["start_date"],
+                "end_date": pkg["end_date"], "days_left": (end - date.today()).days + 1}
+    last = db.execute(
+        "SELECT * FROM packages WHERE user_id=? AND type IN ('70','80') ORDER BY end_date DESC LIMIT 1", (user_id,)
+    ).fetchone()
+    return {"active": False, "expired": dict(last) if last else None}
+
+
 def fmt_date_it(d: date):
     return f"{DAY_NAMES[d.weekday()]} {d.strftime('%d/%m/%Y')}"
 
@@ -312,13 +326,20 @@ def appt_dict(row, viewer=None):
     return d
 
 
-def whatsapp_message(appt, user):
+def whatsapp_message(appt, user, moved_from=None):
     d = date.fromisoformat(appt["date"])
     tipo = "PALESTRA" if appt["type"] == "palestra" else "MASSAGGIO"
     m = MASSAGES.get(appt["massage_type"] or "") if appt["type"] == "massaggio" else None
     if m:
         tipo = f"MASSAGGIO – {m['name']} ({m['price']}€)"
     link = f"{base_url()}/conferma/{appt['token']}"
+    if moved_from:
+        od = date.fromisoformat(moved_from["date"])
+        return (f"Ciao! Sono {user['name']}.\n"
+                f"Ho spostato il mio appuntamento *{tipo}*\n"
+                f"❌ da {fmt_date_it(od)} alle {moved_from['hour']:02d}:00\n"
+                f"✅ a {fmt_date_it(d)} alle {appt['hour']:02d}:00\n"
+                + (f"Conferma o rifiuta qui: {link}" if appt["status"] == "pending" else f"Dettagli: {link}"))
     if appt["joined"]:
         return (f"Ciao! Sono {user['name']}.\n"
                 f"Mi unisco alla lezione di *{tipo}* di {fmt_date_it(d)} alle {appt['hour']:02d}:00.\n"
@@ -483,6 +504,8 @@ def api_me():
         app_name=CONFIG.get("APP_NAME", "G & M"),
         payments=payments.status(),
         payment_history=payments.history(db, u["id"]),
+        subscription=payments.active_subscription(db, u["id"]),
+        gym_package=gym_package_status(db, u["id"]),
     )
 
 
@@ -551,92 +574,134 @@ def api_calendar():
     )
 
 
-@app.post("/api/appointments")
-@login_required
-def api_book():
-    db = get_db()
-    u = g.user
-    data = request.get_json(silent=True) or {}
+def check_slot(db, u, typ, d, hour, massage_type=None, exclude_id=None):
+    """Regole di prenotazione. Ritorna (errore, codice_http, extra) oppure (None, esistenti, None)."""
+    if hour not in hours_for(d, typ):
+        return "Orario non prenotabile per questo tipo di appuntamento", 400, None
+    if typ == "massaggio" and massage_type not in MASSAGES:
+        return "Scegli il tipo di massaggio", 400, None
+    if datetime(d.year, d.month, d.day, hour) <= datetime.now():
+        return "Non puoi prenotare un orario già passato", 400, None
+
+    existing = [e for e in db.execute(
+        "SELECT * FROM appointments WHERE date=? AND hour=? AND status IN ('pending','confirmed')",
+        (d.isoformat(), hour)).fetchall() if e["id"] != exclude_id]
+    if any(e["user_id"] == u["id"] for e in existing):
+        return "Hai già un appuntamento in questo orario", 409, None
+
+    def count_mine(t, start, end):
+        return db.execute(
+            "SELECT COUNT(*) FROM appointments WHERE user_id=? AND type=? AND status IN ('pending','confirmed') "
+            "AND date BETWEEN ? AND ? AND id<>?", (u["id"], t, start, end, exclude_id or 0)).fetchone()[0]
+
+    if typ == "massaggio":
+        if existing:
+            return "Orario non disponibile: c'è già un appuntamento. Scegli un altro orario.", 409, None
+        limit, pkg = massage_limit(db, u["id"], d)
+        if limit and count_mine("massaggio", pkg["start_date"], pkg["end_date"]) >= limit:
+            return f"Hai già usato i {limit} massaggi del tuo percorso in questo periodo.", 409, None
+    else:
+        if any(e["type"] == "massaggio" for e in existing):
+            return "In questo orario c'è un massaggio: non è possibile allenarsi. Scegli un altro orario.", 409, None
+        if len(existing) >= CONFIG["MAX_GYM_PER_SLOT"]:
+            return "Lezione al completo. Scegli un altro orario.", 409, None
+        # per allenarsi serve l'abbonamento mensile valido nel giorno scelto
+        limit, pkg = training_limit(db, u["id"], d)
+        if not limit:
+            return ("Per prenotare gli allenamenti serve un abbonamento mensile attivo "
+                    f"(valido anche il {fmt_date_it(d)}). Vai nella sezione Allenamento per attivarlo."), 402, {"code": "no_package"}
+        monday = d - timedelta(days=d.weekday())
+        if count_mine("palestra", monday.isoformat(), (monday + timedelta(days=6)).isoformat()) >= limit:
+            return f"Hai raggiunto il limite del tuo abbonamento: {limit} allenamenti a settimana.", 409, None
+    return None, existing, None
+
+
+def _parse_booking(data):
     typ = data.get("type")
     if typ not in ("palestra", "massaggio"):
-        return jsonify(error="Tipo di appuntamento non valido"), 400
+        raise ValueError("Tipo di appuntamento non valido")
     try:
         d = date.fromisoformat(data.get("date", ""))
         hour = int(data.get("hour"))
     except (ValueError, TypeError):
-        return jsonify(error="Data o orario non validi"), 400
+        raise ValueError("Data o orario non validi")
+    return typ, d, hour
 
-    if hour not in hours_for(d, typ):
-        return jsonify(error="Orario non prenotabile per questo tipo di appuntamento"), 400
-    massage_type = None
-    if typ == "massaggio":
-        massage_type = data.get("massage_type")
-        if massage_type not in MASSAGES:
-            return jsonify(error="Scegli il tipo di massaggio"), 400
-    if datetime(d.year, d.month, d.day, hour) <= datetime.now():
-        return jsonify(error="Non puoi prenotare un orario già passato"), 400
 
-    existing = db.execute(
-        "SELECT * FROM appointments WHERE date=? AND hour=? AND status IN ('pending','confirmed')",
-        (d.isoformat(), hour),
-    ).fetchall()
-
-    if any(e["user_id"] == u["id"] for e in existing):
-        return jsonify(error="Hai già un appuntamento in questo orario"), 409
-
-    if typ == "massaggio":
-        if existing:
-            return jsonify(error="Orario non disponibile: c'è già un appuntamento. Scegli un altro orario."), 409
-        # limite del percorso mensile (contato nel periodo di validità dell'abbonamento)
-        limit, pkg = massage_limit(db, u["id"], d)
-        if limit:
-            cnt = db.execute(
-                "SELECT COUNT(*) FROM appointments WHERE user_id=? AND type='massaggio' "
-                "AND status IN ('pending','confirmed') AND date BETWEEN ? AND ?",
-                (u["id"], pkg["start_date"], pkg["end_date"]),
-            ).fetchone()[0]
-            if cnt >= limit:
-                return jsonify(error=f"Hai già usato i {limit} massaggi del tuo percorso in questo periodo."), 409
-    else:
-        if any(e["type"] == "massaggio" for e in existing):
-            return jsonify(error="In questo orario c'è un massaggio: non è possibile allenarsi. Scegli un altro orario."), 409
-        if len(existing) >= CONFIG["MAX_GYM_PER_SLOT"]:
-            return jsonify(error="Lezione al completo. Scegli un altro orario."), 409
-        # limite settimanale del pacchetto
-        limit, _pkg = training_limit(db, u["id"], d)
-        if limit:
-            monday = d - timedelta(days=d.weekday())
-            sunday = monday + timedelta(days=6)
-            cnt = db.execute(
-                "SELECT COUNT(*) FROM appointments WHERE user_id=? AND type='palestra' "
-                "AND status IN ('pending','confirmed') AND date BETWEEN ? AND ?",
-                (u["id"], monday.isoformat(), sunday.isoformat()),
-            ).fetchone()[0]
-            if cnt >= limit:
-                return jsonify(error=f"Hai raggiunto il limite del tuo pacchetto: {limit} allenamenti a settimana."), 409
-
-    # se c'è già una lezione di palestra confermata, ci si unisce direttamente
-    joined = typ == "palestra" and any(e["type"] == "palestra" and e["status"] == "confirmed" for e in existing)
-    status = "confirmed" if joined else "pending"
-    token = secrets.token_urlsafe(24)
-    cur = db.execute(
-        "INSERT INTO appointments(user_id,type,massage_type,date,hour,status,joined,token,created_at,decided_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?)",
-        (u["id"], typ, massage_type, d.isoformat(), hour, status, int(joined), token, now_iso(),
-         now_iso() if joined else None),
-    )
-    db.commit()
-    appt = db.execute("SELECT * FROM appointments WHERE id=?", (cur.lastrowid,)).fetchone()
-    msg = whatsapp_message(appt, u)
-    limit, _ = training_limit(db, u["id"], d)
+def _booking_response(db, u, appt, joined, moved_from=None):
+    msg = whatsapp_message(appt, u, moved_from)
+    d = date.fromisoformat(appt["date"])
     return jsonify(
         ok=True,
         appointment=appt_dict(appt, u),
         joined=joined,
         whatsapp_url=whatsapp_url(msg),
         whatsapp_text=msg,
-        no_package=(typ == "palestra" and limit is None) or (typ == "massaggio" and massage_limit(db, u["id"], d)[0] is None),
+        no_package=(appt["type"] == "massaggio" and massage_limit(db, u["id"], d)[0] is None),
     )
+
+
+@app.post("/api/appointments")
+@login_required
+def api_book():
+    db = get_db()
+    u = g.user
+    data = request.get_json(silent=True) or {}
+    try:
+        typ, d, hour = _parse_booking(data)
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+    massage_type = data.get("massage_type") if typ == "massaggio" else None
+    err, existing, extra = check_slot(db, u, typ, d, hour, massage_type)
+    if err:
+        return jsonify(error=err, **(extra or {})), existing
+
+    # se c'è già una lezione di palestra confermata, ci si unisce direttamente
+    joined = typ == "palestra" and any(e["type"] == "palestra" and e["status"] == "confirmed" for e in existing)
+    status = "confirmed" if joined else "pending"
+    cur = db.execute(
+        "INSERT INTO appointments(user_id,type,massage_type,date,hour,status,joined,token,created_at,decided_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (u["id"], typ, massage_type, d.isoformat(), hour, status, int(joined), secrets.token_urlsafe(24), now_iso(),
+         now_iso() if joined else None),
+    )
+    db.commit()
+    appt = db.execute("SELECT * FROM appointments WHERE id=?", (cur.lastrowid,)).fetchone()
+    return _booking_response(db, u, appt, joined)
+
+
+@app.post("/api/appointments/<int:aid>/move")
+@login_required
+def api_move(aid):
+    """Sposta un proprio appuntamento a un altro giorno/ora: torna 'in attesa' e va riconfermato dal titolare."""
+    db = get_db()
+    u = g.user
+    old = db.execute("SELECT * FROM appointments WHERE id=? AND user_id=?", (aid, u["id"])).fetchone()
+    if not old or old["status"] not in ACTIVE_STATUSES:
+        return jsonify(error="Appuntamento non trovato o già chiuso"), 404
+    data = request.get_json(silent=True) or {}
+    try:
+        d = date.fromisoformat(data.get("date", ""))
+        hour = int(data.get("hour"))
+    except (ValueError, TypeError):
+        return jsonify(error="Data o orario non validi"), 400
+    massage_type = data.get("massage_type") or old["massage_type"]
+    if d.isoformat() == old["date"] and hour == old["hour"] and massage_type == old["massage_type"]:
+        return jsonify(error="È già questo l'orario del tuo appuntamento"), 400
+    err, existing, extra = check_slot(db, u, old["type"], d, hour, massage_type, exclude_id=aid)
+    if err:
+        return jsonify(error=err, **(extra or {})), existing
+    joined = old["type"] == "palestra" and any(e["type"] == "palestra" and e["status"] == "confirmed" for e in existing)
+    status = "confirmed" if joined else "pending"
+    db.execute(
+        "UPDATE appointments SET date=?, hour=?, massage_type=?, status=?, joined=?, token=?, decided_at=?, "
+        "created_at=? WHERE id=?",
+        (d.isoformat(), hour, massage_type if old["type"] == "massaggio" else None, status, int(joined),
+         secrets.token_urlsafe(24), now_iso() if joined else None, now_iso(), aid),
+    )
+    db.commit()
+    appt = db.execute("SELECT * FROM appointments WHERE id=?", (aid,)).fetchone()
+    return _booking_response(db, u, appt, joined, moved_from=dict(old))
 
 
 @app.get("/api/appointments/<int:aid>/whatsapp")
@@ -681,10 +746,20 @@ def api_payments_start():
     data = request.get_json(silent=True) or {}
     try:
         r = payments.start_purchase(get_db(), g.user, data.get("type"), PACKAGES,
-                                    base_url(), CONFIG.get("APP_NAME", "G & M"))
+                                    base_url(), CONFIG.get("APP_NAME", "G & M"),
+                                    recurring=bool(data.get("recurring")))
     except ValueError as e:
         return jsonify(error=str(e)), 400
     return jsonify(r)
+
+
+@app.post("/api/payments/subscription/cancel")
+@login_required
+def api_subscription_cancel():
+    try:
+        return jsonify(payments.cancel_subscription(get_db(), g.user["id"]))
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
 
 
 @app.get("/api/payments/return")

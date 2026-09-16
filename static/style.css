@@ -290,6 +290,12 @@ optgroup { font-weight: 700; }
   background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
 }
 .hero.massaggio { background: linear-gradient(135deg, #4c1d95 0%, #7c3aed 100%); }
+.hero.expired { background: linear-gradient(135deg, #7f1d1d 0%, #dc2626 100%); }
+.hero .stat.warn { background: rgba(255, 220, 120, .25); }
+.hero .stat + .stat { margin-left: .4rem; }
+.buy-group { display: flex; flex-direction: column; gap: .35rem; align-items: stretch; }
+.buy-group .btn { white-space: nowrap; }
+.wa-preview { margin-bottom: .6rem; border-left: 3px solid var(--wa); }
 .hero h2 { color: #fff; margin-bottom: .3rem; }
 .hero p { color: rgba(255,255,255,.8); font-size: .92rem; margin-bottom: 1rem; }
 .hero .lbl { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; opacity: .75; font-weight: 600; }

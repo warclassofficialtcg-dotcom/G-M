@@ -13,6 +13,7 @@
     selectedDate: null,
     bookingType: null,   // 'palestra' | 'massaggio' | null (preselezione dalla sezione di provenienza)
     bookingService: null, // chiave del massaggio scelto dal listino
+    moveAppt: null,       // appuntamento che si sta spostando (scelta del nuovo orario dal calendario)
     adminTab: "pending",
   };
 
@@ -29,6 +30,7 @@
     if (!res.ok) {
       const err = new Error(data.error || "Errore di rete");
       err.status = res.status;
+      err.code = data.code;
       throw err;
     }
     return data;
@@ -98,10 +100,16 @@
     window.scrollTo({ top: 0 });
   }
   $$(".navbtn").forEach((b) => b.addEventListener("click", () => {
-    if (b.dataset.view === "calendar") { state.bookingType = null; state.bookingService = null; }
+    if (b.dataset.view === "calendar") { state.bookingType = null; state.bookingService = null; state.moveAppt = null; }
     showView(b.dataset.view);
   }));
-  $("#btn-book-training").addEventListener("click", () => { state.bookingType = "palestra"; showView("calendar"); });
+  $("#btn-book-training").addEventListener("click", () => {
+    if (!(state.me.gym_package && state.me.gym_package.active)) {
+      showNoPackage("Per prenotare gli allenamenti serve un abbonamento mensile attivo.");
+      return;
+    }
+    state.bookingType = "palestra"; showView("calendar");
+  });
   $("#btn-book-massage").addEventListener("click", () => { state.bookingType = "massaggio"; state.bookingService = null; showView("calendar"); });
 
   // ------------------------------------------------------------ Boot
@@ -159,12 +167,18 @@
     $("#week-title").textContent = `${f(ws)} – ${f(we)}`;
 
     const mode = $("#booking-mode");
-    if (state.bookingType) {
+    if (state.moveAppt) {
+      const m = state.moveAppt;
+      mode.innerHTML = `Stai <strong>spostando</strong> ${esc(m.massage_name || typeLabel(m.type))} di ${m.date_label} alle ${m.time_label}:
+        tocca il nuovo orario nel calendario. <a href="#" id="clear-mode">annulla</a>`;
+      mode.classList.remove("hidden");
+      $("#clear-mode").addEventListener("click", (e) => { e.preventDefault(); state.moveAppt = null; state.bookingType = null; renderCalendar(); });
+    } else if (state.bookingType) {
       const svc = state.bookingService && state.me.massages[state.bookingService];
       mode.innerHTML = `Stai prenotando ${svc ? `<strong>${esc(svc.name)}</strong>` : `un <strong>${typeLabel(state.bookingType).toLowerCase()}</strong>`}: scegli giorno e orario.
         <a href="#" id="clear-mode">annulla</a>`;
       mode.classList.remove("hidden");
-      $("#clear-mode").addEventListener("click", (e) => { e.preventDefault(); state.bookingType = null; renderCalendar(); });
+      $("#clear-mode").addEventListener("click", (e) => { e.preventDefault(); state.bookingType = null; state.bookingService = null; renderCalendar(); });
     } else {
       mode.classList.add("hidden");
     }
@@ -224,14 +238,31 @@
   }
 
   // ------------------------------------------------------------ Prenotazione
+  function composeMessage(type, massageKey, day, hour, joinLesson) {
+    const me = state.me;
+    const m = type === "massaggio" && me.massages[massageKey];
+    const tipo = m ? `MASSAGGIO – ${m.name} (${m.price}€)` : type === "palestra" ? "PALESTRA" : "MASSAGGIO";
+    const when = `${day.weekday} ${String(day.day).padStart(2, "0")}/${day.month}/${day.date.slice(0, 4)} alle ${String(hour).padStart(2, "0")}:00`;
+    const mv = state.moveAppt;
+    if (mv) return `Ciao! Sono ${me.user.name}.\nHo spostato il mio appuntamento *${tipo}*\n❌ da ${mv.date_label} alle ${mv.time_label}\n✅ a ${when}\nConferma o rifiuta qui: [link di conferma]`;
+    if (joinLesson) return `Ciao! Sono ${me.user.name}.\nMi unisco alla lezione di *${tipo}* di ${when}.\nDettagli: [link]`;
+    return `Ciao! Sono ${me.user.name}.\nRichiesta appuntamento *${tipo}*\n📅 ${when}\nConferma o rifiuta qui: [link di conferma]`;
+  }
+
   function openBooking(day, slot) {
     const a = slot.appointments;
     const mine = a.find((x) => x.mine);
     const hasMassage = a.some((x) => x.type === "massaggio");
     const gym = a.filter((x) => x.type === "palestra");
     const gymFull = gym.length >= state.calendar.max_gym;
-    const canGym = !slot.past && !hasMassage && !gymFull && !mine && slot.types.includes("palestra");
-    const canMassage = !slot.past && a.length === 0 && slot.types.includes("massaggio");
+    const mv = state.moveAppt;
+    const isSame = mv && mv.date === day.date && mv.hour === slot.hour;
+    let canGym = !slot.past && !hasMassage && !gymFull && !mine && slot.types.includes("palestra");
+    let canMassage = !slot.past && a.length === 0 && slot.types.includes("massaggio");
+    if (mv) {  // spostamento: solo il tipo dell'appuntamento, e non sullo stesso orario
+      canGym = canGym && mv.type === "palestra" && !isSame;
+      canMassage = canMassage && mv.type === "massaggio" && !isSame;
+    }
     const massages = state.me.massages, cats = state.me.massage_categories;
 
     let listHtml = "";
@@ -245,17 +276,21 @@
 
     let msg = "";
     if (slot.past) msg = `<p class="alert warn">Orario già passato.</p>`;
+    else if (isSame) msg = `<p class="alert info">Questo è l'orario attuale del tuo appuntamento: scegline un altro.</p>`;
+    else if (mv && !slot.types.includes(mv.type)) msg = `<p class="alert warn">In questo orario non si può prenotare ${mv.type === "palestra" ? "la palestra" : "un massaggio"}.</p>`;
     else if (mine) msg = `<p class="alert info">Hai già un appuntamento in questo orario.</p>`;
     else if (hasMassage) msg = `<p class="alert warn">Orario occupato da un massaggio. Scegli un altro orario.</p>`;
     else if (gymFull) msg = `<p class="alert warn">Lezione al completo. Scegli un altro orario.</p>`;
     else if (gym.length) msg = `<p class="alert info">C'è già chi si allena a quest'ora: puoi <strong>unirti alla lezione</strong>. Il massaggio non è disponibile.</p>`;
 
+    if (mv && !state.bookingService) state.bookingService = mv.massage_type;
     let sel = state.bookingType || (canGym ? "palestra" : canMassage ? "massaggio" : null);
     if (sel === "palestra" && !canGym) sel = canMassage ? "massaggio" : null;
     if (sel === "massaggio" && !canMassage) sel = canGym ? "palestra" : null;
 
     openModal(`
-      <h2>${day.weekday} ${day.day}/${day.month} · ${slot.label}</h2>
+      <h2>${mv ? "Sposta a: " : ""}${day.weekday} ${day.day}/${day.month} · ${slot.label}</h2>
+      ${mv ? `<p class="small muted">Attuale: ${esc(mv.massage_name || typeLabel(mv.type))} · ${mv.date_label} alle ${mv.time_label}</p>` : ""}
       ${listHtml}${msg}
       ${(canGym || canMassage) ? `
         <p class="small muted">Tipo di appuntamento</p>
@@ -270,16 +305,29 @@
                 .map(([k, m]) => `<option value="${k}" ${k === state.bookingService ? "selected" : ""}>${esc(m.name)} · ${m.price}€</option>`).join("")}</optgroup>`).join("")}
             </select></label>
         </div>
-        <p class="small muted">Dopo la prenotazione si aprirà WhatsApp con il messaggio pronto da inviare al titolare, che confermerà l'appuntamento.</p>
-        <button class="btn primary full lg" id="btn-confirm-booking" ${sel ? "" : "disabled"}>Conferma prenotazione</button>
+        <p class="small muted" style="margin-bottom:.2rem">Anteprima del messaggio WhatsApp che invierai al titolare:</p>
+        <div class="wa-text wa-preview" id="wa-preview"></div>
+        <p class="small muted">Dopo la conferma si apre WhatsApp con questo messaggio già scritto; il titolare riceve il link per confermare.</p>
+        <button class="btn primary full lg" id="btn-confirm-booking" ${sel ? "" : "disabled"}>${mv ? "Sposta qui" : "Conferma prenotazione"}</button>
       ` : ""}
     `);
 
+    const joinLesson = gym.some((x) => x.status === "confirmed");
+    const updatePreview = () => {
+      const el = $("#wa-preview");
+      if (!el || !sel) return;
+      const mk = sel === "massaggio" ? $("#massage-select").value : null;
+      el.textContent = composeMessage(sel, mk, day, slot.hour, sel === "palestra" && joinLesson);
+    };
+    updatePreview();
+    const msel = $("#massage-select");
+    if (msel) msel.addEventListener("change", updatePreview);
     $$(".type-choice button").forEach((b) => b.addEventListener("click", () => {
       sel = b.dataset.t;
       $$(".type-choice button").forEach((x) => x.classList.toggle("sel", x === b));
       $("#massage-pick").classList.toggle("hidden", sel !== "massaggio");
       $("#btn-confirm-booking").disabled = false;
+      updatePreview();
     }));
     const btn = $("#btn-confirm-booking");
     if (btn) btn.addEventListener("click", async () => {
@@ -287,24 +335,39 @@
       try {
         const body = { type: sel, date: day.date, hour: slot.hour };
         if (sel === "massaggio") body.massage_type = $("#massage-select").value;
-        const r = await api("/api/appointments", { method: "POST", body });
-        state.bookingType = null; state.bookingService = null;
-        showWhatsappStep(r);
+        const r = mv
+          ? await api(`/api/appointments/${mv.id}/move`, { method: "POST", body })
+          : await api("/api/appointments", { method: "POST", body });
+        state.bookingType = null; state.bookingService = null; state.moveAppt = null;
+        showWhatsappStep(r, !!mv);
         await refreshMe();
         loadCalendar();
       } catch (e) {
-        toast(e.message, true);
+        if (e.code === "no_package") showNoPackage(e.message);
+        else toast(e.message, true);
         btn.disabled = false;
       }
     });
   }
 
-  function showWhatsappStep(r) {
+  function showNoPackage(text) {
+    openModal(`
+      <h2>Serve l'abbonamento mensile</h2>
+      <p>${esc(text)}</p>
+      <p class="small muted">L'abbonamento vale un mese esatto dal giorno del pagamento. Puoi pagare un mese alla volta oppure attivare il rinnovo automatico.</p>
+      <button class="btn primary full lg" id="btn-go-training">Vai all'abbonamento</button>
+      <button class="btn full" id="btn-np-close" style="margin-bottom:0">Chiudi</button>
+    `);
+    $("#btn-go-training").addEventListener("click", () => { closeModal(); showView("training"); });
+    $("#btn-np-close").addEventListener("click", closeModal);
+  }
+
+  function showWhatsappStep(r, moved = false) {
     const a = r.appointment;
     // apri subito WhatsApp (potrebbe essere bloccato come popup: c'è comunque il pulsante)
     const win = window.open(r.whatsapp_url, "_blank");
     openModal(`
-      <h2>${r.joined ? "Ti sei unito alla lezione" : "Richiesta registrata"}</h2>
+      <h2>${moved ? "Appuntamento spostato" : r.joined ? "Ti sei unito alla lezione" : "Richiesta registrata"}</h2>
       <p><span class="badge ${a.type}">${a.massage_name || typeLabel(a.type)}</span> ${a.date_label} alle ${a.time_label}</p>
       ${r.joined
         ? `<p>La lezione era già confermata: il tuo posto è nel calendario. Avvisa comunque il titolare su WhatsApp.</p>`
@@ -313,8 +376,8 @@
       <a class="btn whatsapp full lg" href="${r.whatsapp_url}" target="_blank" rel="noopener" style="text-decoration:none">
         <svg><use href="#i-whatsapp"/></svg> ${win ? "Riapri WhatsApp" : "Invia su WhatsApp"}
       </a>
-      <details style="margin-top:.8rem"><summary class="small muted">Testo del messaggio</summary>
-        <div class="wa-text">${esc(r.whatsapp_text)}</div></details>
+      <p class="small muted" style="margin:.8rem 0 .2rem">Messaggio:</p>
+      <div class="wa-text">${esc(r.whatsapp_text)}</div>
       <button class="btn full" id="btn-done" style="margin-top:.8rem;margin-bottom:0">Chiudi</button>
     `);
     $("#btn-done").addEventListener("click", closeModal);
@@ -347,7 +410,8 @@
       </div>
       <div class="btn-row" style="margin:0">
         ${opts.resend ? `<button class="btn whatsapp small" data-resend="${a.id}"><svg style="width:15px;height:15px"><use href="#i-whatsapp"/></svg>WhatsApp</button>` : ""}
-        ${opts.cancel ? `<button class="btn danger small" data-cancel="${a.id}">Annulla</button>` : ""}
+        ${opts.cancel ? `<button class="btn small" data-move="${a.id}">Sposta</button>
+                         <button class="btn danger small" data-cancel="${a.id}">Annulla</button>` : ""}
         ${opts.adminConfirm ? `<button class="btn ok small" data-status="confirmed" data-id="${a.id}">Conferma</button>
                                <button class="btn danger small" data-status="rejected" data-id="${a.id}">Rifiuta</button>` : ""}
         ${opts.adminCancel ? `<button class="btn danger small" data-status="cancelled" data-id="${a.id}">Annulla</button>` : ""}
@@ -358,6 +422,13 @@
   function bindAppointmentButtons(root, after) {
     $$("[data-resend]", root).forEach((b) => b.addEventListener("click", () => resendWhatsapp(b.dataset.resend)));
     $$("[data-cancel]", root).forEach((b) => b.addEventListener("click", () => cancelAppointment(b.dataset.cancel, after)));
+    $$("[data-move]", root).forEach((b) => b.addEventListener("click", () => {
+      const a = state.me.appointments.find((x) => x.id === Number(b.dataset.move));
+      if (!a) return;
+      state.moveAppt = a; state.bookingType = a.type; state.bookingService = a.massage_type || null;
+      state.week = a.date;  // apre il calendario sulla settimana dell'appuntamento
+      showView("calendar");
+    }));
     $$("[data-status]", root).forEach((b) => b.addEventListener("click", async () => {
       try {
         await api(`/api/admin/appointments/${b.dataset.id}/status`, { method: "POST", body: { status: b.dataset.status } });
@@ -371,28 +442,42 @@
   function renderTraining() {
     const me = state.me;
     const box = $("#package-box");
-    const monthly = me.packages.find((p) => p.info && p.info.per_week);
-    const extras = me.packages.filter((p) => !(p.info && p.info.per_week));
+    const gp = me.gym_package || {};
+    const sub = me.subscription;
+    const extras = me.packages.filter((p) => p.info && p.info.family === "extra");
     let html = "";
-    if (monthly) {
+    if (gp.active) {
       const weekAppts = me.appointments.filter((a) => a.type === "palestra");
+      const soon = gp.days_left <= 7;
       html += `<div class="hero">
-        <div class="lbl">Pacchetto attivo</div>
-        <div class="val">${monthly.info.price}€ · ${monthly.info.per_week} allenamenti a settimana</div>
-        <div class="meta">Valido dal ${fmtDate(monthly.start_date)} al ${fmtDate(monthly.end_date)}</div>
+        <div class="lbl">Abbonamento attivo</div>
+        <div class="val">${esc(me.catalog[gp.type].label.split(" – ")[0])} · ${gp.per_week} allenamenti a settimana</div>
+        <div class="meta">Scade ${fmtDate(gp.end_date)} · ${gp.days_left} giorn${gp.days_left === 1 ? "o" : "i"} rimanent${gp.days_left === 1 ? "e" : "i"}</div>
         <span class="stat">${weekAppts.length} allenament${weekAppts.length === 1 ? "o" : "i"} in programma</span>
+        ${sub ? `<span class="stat">↻ Rinnovo automatico attivo</span>` : soon ? `<span class="stat warn">⚠ In scadenza: rinnova qui sotto</span>` : ""}
       </div>`;
     } else {
-      html += `<div class="hero">
-        <div class="lbl">Pacchetto</div>
-        <div class="val">Nessun pacchetto attivo</div>
-        <div class="meta">Scegli con il titolare tra 70€ (2 allenamenti/settimana) e 80€ (3 allenamenti/settimana).</div>
+      html += `<div class="hero expired">
+        <div class="lbl">Abbonamento</div>
+        <div class="val">${gp.expired ? "Abbonamento scaduto" : "Nessun abbonamento attivo"}</div>
+        <div class="meta">${gp.expired ? `Scaduto ${fmtDate(gp.expired.end_date)}. ` : ""}Per prenotare gli allenamenti serve l'abbonamento mensile: vale un mese esatto dal giorno del pagamento.</div>
       </div>`;
     }
+    if (sub) {
+      html += `<p class="small" style="margin:-.4rem 0 1rem">Rinnovo automatico ${sub.provider === "simulated" ? "(prova) " : ""}sul ${esc(me.catalog[sub.package_type].label.split(" – ")[0])}: a ogni scadenza viene addebitato il mese successivo.
+        <a href="#" id="btn-cancel-sub">Disdici il rinnovo</a></p>`;
+    }
     if (extras.length) {
-      html += `<p class="small" style="margin:-.4rem 0 1rem">Servizi attivi: ${extras.map((p) => `<span class="badge palestra">${esc(p.info ? p.info.label : p.type)}</span>`).join(" ")}</p>`;
+      html += `<p class="small" style="margin:-.4rem 0 1rem">Servizi attivi: ${extras.map((p) => `<span class="badge palestra">${esc(p.info.label)}</span>`).join(" ")}</p>`;
     }
     box.innerHTML = html;
+    const cs = $("#btn-cancel-sub");
+    if (cs) cs.addEventListener("click", async (e) => {
+      e.preventDefault();
+      if (!confirm("Disdire il rinnovo automatico? Il mese già pagato resta valido fino alla scadenza.")) return;
+      try { await api("/api/payments/subscription/cancel", { method: "POST", body: {} }); toast("Rinnovo automatico disdetto"); await refreshMe(); renderTraining(); }
+      catch (err) { toast(err.message, true); }
+    });
 
     $("#sheet-workout").textContent = me.sheets.workout || "La tua scheda non è ancora stata caricata dal titolare.";
     $("#sheet-diet").textContent = me.sheets.diet || "La tua dieta non è ancora stata caricata dal titolare.";
@@ -405,10 +490,13 @@
       `<li>
         <div class="main">
           <div class="title">${esc(p.label.split(" – ")[0])}</div>
-          <div class="sub">${p.per_week ? `${p.per_week} allenamenti a settimana · ` : ""}validità 30 giorni</div>
+          <div class="sub">${p.per_week ? `${p.per_week} allenamenti a settimana · un mese dal pagamento` : "validità un mese"}</div>
         </div>
-        <strong class="price">${p.price}€</strong>
-        ${canBuy ? `<button class="btn primary small" data-buy="${k}">Acquista</button>` : ""}
+        <strong class="price">${p.price}€${p.monthly ? "<span class='muted small'>/mese</span>" : ""}</strong>
+        ${canBuy ? (p.monthly
+          ? `<span class="buy-group"><button class="btn primary small" data-buy="${k}">Paga 1 mese</button>
+             <button class="btn small" data-buy="${k}" data-recurring="1" ${sub ? "disabled" : ""} title="Addebito automatico ogni mese, disdici quando vuoi">↻ Rinnovo automatico</button></span>`
+          : `<button class="btn primary small" data-buy="${k}">Acquista</button>`) : ""}
       </li>`).join("");
     bindBuyButtons($("#pricelist"));
 
@@ -421,7 +509,8 @@
     $$("[data-buy]", root).forEach((b) => b.addEventListener("click", async () => {
       b.disabled = true;
       try {
-        const r = await api("/api/payments/start", { method: "POST", body: { type: b.dataset.buy } });
+        if (b.dataset.recurring && !confirm("Attivare il rinnovo automatico? Ogni mese verrà addebitato l'importo dell'abbonamento; puoi disdire in qualsiasi momento dalla sezione Allenamento.")) { b.disabled = false; return; }
+        const r = await api("/api/payments/start", { method: "POST", body: { type: b.dataset.buy, recurring: !!b.dataset.recurring } });
         location.href = r.url;
       } catch (e) { toast(e.message, true); b.disabled = false; }
     }));

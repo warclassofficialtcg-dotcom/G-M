@@ -4,8 +4,11 @@
 COSA SI VENDE
     I pacchetti del listino (70€ 2 allenamenti/sett., 80€ 3 allenamenti/sett.,
     30€ scheda, 30€ dieta). Pagato il pacchetto, viene inserita una riga nella
-    tabella `packages` dell'utente con validità 30 giorni: la stessa riga che il
-    titolare può inserire a mano dalla sezione Gestione.
+    tabella `packages` dell'utente valida UN MESE ESATTO dal giorno del pagamento:
+    la stessa riga che il titolare può inserire a mano dalla sezione Gestione.
+    Gli abbonamenti mensili (palestra) si possono pagare una volta sola oppure
+    con RINNOVO AUTOMATICO (Stripe Subscription): a ogni fattura pagata arriva
+    un nuovo mese; il cliente può disdire dall'app.
 
 COME FUNZIONA L'INCASSO (stesso schema di SoundUp)
     1. il cliente sceglie un pacchetto -> creiamo una Checkout Session Stripe e
@@ -23,7 +26,8 @@ CONFIGURAZIONE (file .env accanto ad app.py, oppure variabili d'ambiente)
     PAYMENTS_PROVIDER        'stripe' oppure 'simulated' (default: sviluppo, nessun incasso reale)
     STRIPE_SECRET_KEY        sk_live_... / sk_test_...   (segreto: mai nel codice)
     STRIPE_PUBLISHABLE_KEY   pk_live_... / pk_test_...
-    STRIPE_WEBHOOK_SECRET    whsec_...  (Developers -> Webhooks -> endpoint <PUBLIC_URL>/api/payments/stripe-webhook)
+    STRIPE_WEBHOOK_SECRET    whsec_...  (Developers -> Webhooks -> endpoint <PUBLIC_URL>/api/payments/stripe-webhook,
+                             eventi: checkout.session.completed, invoice.paid, customer.subscription.deleted)
     PUBLIC_URL               es. https://gm.onrender.com (se manca si usa BASE_URL di config.json)
     VAT_RATE                 0.22 (IVA Italia; i prezzi del listino sono IVA inclusa)
 """
@@ -39,12 +43,8 @@ import urllib.request
 from datetime import date, datetime, timedelta
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PACKAGE_DAYS = 30
-# pacchetti "della stessa famiglia": il rinnovo parte alla scadenza di quello attivo
-FAMILIES = {
-    "70": ["70", "80"], "80": ["70", "80"],
-    "standard": ["standard", "benessere"], "benessere": ["standard", "benessere"],
-}
+MIGRATIONS = ["ALTER TABLE payments ADD COLUMN kind TEXT NOT NULL DEFAULT 'one_off'"]
+PACKAGES_REF = {}   # catalogo pacchetti, impostato da app.py (serve per famiglia e rinnovi via webhook)
 
 
 # --------------------------------------------------------------------------- #
@@ -151,10 +151,22 @@ CREATE TABLE IF NOT EXISTS payments (
     vat_rate REAL NOT NULL,
     status TEXT NOT NULL,               -- pending | paid | cancelled
     package_id INTEGER,                 -- riga creata in packages dopo l'incasso
+    kind TEXT NOT NULL DEFAULT 'one_off',  -- one_off | subscription
     created_at TEXT NOT NULL,
     paid_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_pay_user ON payments(user_id);
+CREATE TABLE IF NOT EXISTS subscriptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    provider TEXT NOT NULL,             -- 'stripe' | 'simulated'
+    stripe_sub_id TEXT,
+    customer_id TEXT,
+    package_type TEXT NOT NULL,
+    status TEXT NOT NULL,               -- active | cancelled
+    created_at TEXT NOT NULL,
+    cancelled_at TEXT
+);
 CREATE TABLE IF NOT EXISTS stripe_events (
     id TEXT PRIMARY KEY,
     type TEXT,
@@ -219,87 +231,127 @@ def _stripe_api(path, payload=None, method="POST"):
 
 
 # --------------------------------------------------------------------------- #
+#  Durata: un mese esatto dal giorno del pagamento
+# --------------------------------------------------------------------------- #
+def add_month(d: date) -> date:
+    """Stesso giorno del mese successivo (31 gen -> 28/29 feb)."""
+    y, m = (d.year + 1, 1) if d.month == 12 else (d.year, d.month + 1)
+    last = (date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)) - timedelta(days=1)
+    return date(y, m, min(d.day, last.day))
+
+
+def period_from(start: date):
+    return start, add_month(start) - timedelta(days=1)
+
+
+# --------------------------------------------------------------------------- #
 #  Flusso
 # --------------------------------------------------------------------------- #
-def _record(db, user_id, prov, order_id, ptype, info):
+def _record(db, user_id, prov, order_id, ptype, info, kind="one_off"):
     db.execute(
-        "INSERT INTO payments(user_id,provider,order_id,package_type,label,amount_cents,vat_rate,status,created_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?)",
-        (user_id, prov, order_id, ptype, info["label"], int(round(info["price"] * 100)), VAT_RATE, "pending", now_iso()),
+        "INSERT INTO payments(user_id,provider,order_id,package_type,label,amount_cents,vat_rate,status,kind,created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (user_id, prov, order_id, ptype, info["label"], int(round(info["price"] * 100)), VAT_RATE, "pending", kind, now_iso()),
     )
     db.commit()
 
 
-def start_purchase(db, user, ptype, packages, base_url, app_name):
-    """Crea l'ordine e restituisce l'URL a cui mandare il cliente."""
+def _checkout(user, info, ptype, pub, app_name, recurring):
+    line = {
+        "price_data": {
+            "currency": "eur",
+            "unit_amount": int(round(info["price"] * 100)),
+            "product_data": {"name": f"{app_name} — {info['label']}",
+                             "description": ("Rinnovo automatico ogni mese · " if recurring else "Un mese dal pagamento · ") + "IVA inclusa"},
+        },
+        "quantity": 1,
+    }
+    if recurring:
+        line["price_data"]["recurring"] = {"interval": "month"}
+    payload = {
+        "mode": "subscription" if recurring else "payment",
+        "payment_method_types": ["card"],
+        "client_reference_id": str(user["id"]),
+        "customer_email": user["email"],
+        "success_url": f"{pub}/api/payments/return?session_id={{CHECKOUT_SESSION_ID}}",
+        "cancel_url": f"{pub}/?pagamento=annullato",
+        "line_items": [line],
+        "metadata": {"user_id": str(user["id"]), "package_type": ptype},
+    }
+    if recurring:
+        payload["subscription_data"] = {"metadata": {"user_id": str(user["id"]), "package_type": ptype}}
+    return _stripe_api("/checkout/sessions", payload)
+
+
+def start_purchase(db, user, ptype, packages, base_url, app_name, recurring=False):
+    """Crea l'ordine (singolo o abbonamento ricorrente) e restituisce l'URL a cui mandare il cliente."""
     info = packages.get(ptype)
     if not info:
         raise ValueError("Pacchetto non valido")
+    if recurring and not info.get("monthly"):
+        raise ValueError("Questo pacchetto non prevede il rinnovo automatico")
+    kind = "subscription" if recurring else "one_off"
 
     if provider() == "simulated":
         order_id = "sim_" + secrets.token_urlsafe(12)
-        _record(db, user["id"], "simulated", order_id, ptype, info)
+        _record(db, user["id"], "simulated", order_id, ptype, info, kind)
         return {"ok": True, "simulated": True, "order_id": order_id,
                 "url": f"{base_url}/api/payments/simulated?order={order_id}"}
 
     pub = public_url(base_url)
     if not pub:
         raise ValueError("Manca PUBLIC_URL / BASE_URL: serve per riportare il cliente sull'app dopo il pagamento")
-    session = _stripe_api("/checkout/sessions", {
-        "mode": "payment",
-        "payment_method_types": ["card"],
-        "client_reference_id": str(user["id"]),
-        "customer_email": user["email"],
-        "success_url": f"{pub}/api/payments/return?session_id={{CHECKOUT_SESSION_ID}}",
-        "cancel_url": f"{pub}/?pagamento=annullato",
-        "line_items": [{
-            "price_data": {
-                "currency": "eur",
-                "unit_amount": int(round(info["price"] * 100)),
-                "product_data": {"name": f"{app_name} — {info['label']}",
-                                 "description": f"Validità {PACKAGE_DAYS} giorni · IVA inclusa"},
-            },
-            "quantity": 1,
-        }],
-        "metadata": {"user_id": str(user["id"]), "package_type": ptype},
-    })
+    session = _checkout(user, info, ptype, pub, app_name, recurring)
     order_id, url = session.get("id"), session.get("url")
     if not order_id or not url:
         raise ValueError("Stripe non ha restituito una sessione di checkout valida")
-    _record(db, user["id"], "stripe", order_id, ptype, info)
+    _record(db, user["id"], "stripe", order_id, ptype, info, kind)
     return {"ok": True, "simulated": False, "order_id": order_id, "url": url}
 
 
-def grant_once(db, order_id):
-    """Attiva il pacchetto pagato. Idempotente: la seconda chiamata non fa nulla."""
+def _activate_subscription(db, user_id, ptype, prov, stripe_sub_id=None, customer_id=None):
+    """Registra (o riattiva) l'abbonamento ricorrente dell'utente per quel pacchetto."""
+    db.execute("UPDATE subscriptions SET status='cancelled', cancelled_at=? WHERE user_id=? AND status='active'",
+               (now_iso(), user_id))
+    db.execute(
+        "INSERT INTO subscriptions(user_id,provider,stripe_sub_id,customer_id,package_type,status,created_at) "
+        "VALUES (?,?,?,?,?,'active',?)", (user_id, prov, stripe_sub_id, customer_id, ptype, now_iso()))
+    db.commit()
+
+
+def grant_once(db, order_id, start=None, stripe_sub_id=None, customer_id=None):
+    """Attiva il pacchetto pagato per un mese esatto dal pagamento. Idempotente."""
     pay = db.execute("SELECT * FROM payments WHERE order_id=?", (order_id,)).fetchone()
     if not pay:
         raise ValueError("Pagamento non trovato")
     if pay["status"] == "paid":
         return {"already": True, "payment": dict(pay)}
-
-    # il pacchetto mensile parte alla scadenza di quello ancora attivo, così chi
-    # rinnova in anticipo non perde giorni; scheda/dieta partono subito
-    today = date.today()
-    start = today
-    family = FAMILIES.get(pay["package_type"], [pay["package_type"]])
-    if len(family) > 1:
-        qs = ",".join("?" * len(family))
-        cur = db.execute(
-            f"SELECT MAX(end_date) FROM packages WHERE user_id=? AND type IN ({qs}) AND end_date>=?",
-            (pay["user_id"], *family, today.isoformat()),
-        ).fetchone()[0]
-        if cur:
-            start = date.fromisoformat(cur) + timedelta(days=1)
-    end = start + timedelta(days=PACKAGE_DAYS - 1)
+    if start is None:
+        # un mese esatto dal giorno del pagamento; se un abbonamento dello stesso tipo
+        # (palestra o massaggi) è ancora valido, il nuovo mese parte dalla sua scadenza
+        start = date.today()
+        fam = (PACKAGES_REF.get(pay["package_type"]) or {}).get("family")
+        same = [k for k, v in PACKAGES_REF.items() if v.get("family") == fam and fam in ("palestra", "massaggio")]
+        if same:
+            qs = ",".join("?" * len(same))
+            cur_end = db.execute(f"SELECT MAX(end_date) FROM packages WHERE user_id=? AND type IN ({qs}) AND end_date>=?",
+                                 (pay["user_id"], *same, start.isoformat())).fetchone()[0]
+            if cur_end:
+                start = date.fromisoformat(cur_end) + timedelta(days=1)
+    start, end = period_from(start)
     cur = db.execute(
         "INSERT INTO packages(user_id,type,start_date,end_date,note,created_at) VALUES (?,?,?,?,?,?)",
         (pay["user_id"], pay["package_type"], start.isoformat(), end.isoformat(),
-         f"Pagato online ({pay['provider']}) · {order_id}", now_iso()),
+         f"Pagato online ({pay['provider']}{', rinnovo automatico' if pay['kind'] == 'subscription' else ''}) · {order_id}",
+         now_iso()),
     )
     db.execute("UPDATE payments SET status='paid', paid_at=?, package_id=? WHERE id=?",
                (now_iso(), cur.lastrowid, pay["id"]))
     db.commit()
+    if pay["kind"] == "subscription" and not stripe_sub_id and pay["provider"] == "simulated":
+        _activate_subscription(db, pay["user_id"], pay["package_type"], "simulated")
+    elif stripe_sub_id:
+        _activate_subscription(db, pay["user_id"], pay["package_type"], "stripe", stripe_sub_id, customer_id)
     return {"already": False, "payment": dict(db.execute("SELECT * FROM payments WHERE id=?", (pay["id"],)).fetchone())}
 
 
@@ -310,7 +362,7 @@ def confirm_stripe_session(db, session_id):
     session = _stripe_api(f"/checkout/sessions/{session_id}", method="GET")
     if session.get("payment_status") != "paid":
         raise ValueError(f"Pagamento non completato (stato Stripe: {session.get('payment_status')})")
-    return grant_once(db, session_id)
+    return grant_once(db, session_id, stripe_sub_id=session.get("subscription"), customer_id=session.get("customer"))
 
 
 def confirm_simulated(db, order_id):
@@ -320,6 +372,24 @@ def confirm_simulated(db, order_id):
     if not pay:
         raise ValueError("Ordine simulato non trovato")
     return grant_once(db, order_id)
+
+
+def active_subscription(db, user_id):
+    row = db.execute("SELECT * FROM subscriptions WHERE user_id=? AND status='active' ORDER BY id DESC LIMIT 1",
+                     (user_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def cancel_subscription(db, user_id):
+    """Disdice il rinnovo automatico: il mese già pagato resta valido fino alla scadenza."""
+    sub = active_subscription(db, user_id)
+    if not sub:
+        raise ValueError("Nessun rinnovo automatico attivo")
+    if sub["provider"] == "stripe" and sub["stripe_sub_id"]:
+        _stripe_api(f"/subscriptions/{sub['stripe_sub_id']}", method="DELETE")
+    db.execute("UPDATE subscriptions SET status='cancelled', cancelled_at=? WHERE id=?", (now_iso(), sub["id"]))
+    db.commit()
+    return {"ok": True}
 
 
 def verify_stripe_webhook(headers, raw_body):
@@ -340,6 +410,33 @@ def verify_stripe_webhook(headers, raw_body):
     return hmac.compare_digest(expected, v1)
 
 
+def _invoice_subscription_id(inv):
+    """L'id abbonamento di una fattura: campo 'subscription' (API classiche) o parent.subscription_details (API 2025+)."""
+    sub = inv.get("subscription")
+    if isinstance(sub, dict):
+        sub = sub.get("id")
+    if not sub:
+        sub = ((inv.get("parent") or {}).get("subscription_details") or {}).get("subscription")
+    return sub
+
+
+def _renew_from_invoice(db, inv):
+    """invoice.paid di un rinnovo mensile: nuovo mese per l'abbonato."""
+    sub_id = _invoice_subscription_id(inv)
+    if not sub_id:
+        return {"ignored": "invoice senza abbonamento"}
+    sub = db.execute("SELECT * FROM subscriptions WHERE stripe_sub_id=? AND status='active'", (sub_id,)).fetchone()
+    if not sub:
+        return {"ignored": "abbonamento sconosciuto"}
+    inv_id = inv.get("id")
+    if db.execute("SELECT 1 FROM payments WHERE order_id=?", (inv_id,)).fetchone():
+        return grant_once(db, inv_id)
+    ptype = sub["package_type"]
+    info = PACKAGES_REF.get(ptype) or {"label": f"Rinnovo {ptype}", "price": (inv.get("amount_paid") or 0) / 100}
+    _record(db, sub["user_id"], "stripe", inv_id, ptype, info, "subscription")
+    return grant_once(db, inv_id)  # parte dalla scadenza del mese in corso, o da oggi
+
+
 def handle_stripe_event(db, event):
     """Stripe ripete la consegna finché non riceve 200: ogni evento si elabora una volta."""
     eid, etype = event.get("id"), event.get("type")
@@ -348,11 +445,19 @@ def handle_stripe_event(db, event):
             return {"duplicate": True}
         db.execute("INSERT INTO stripe_events(id,type,received_at) VALUES (?,?,?)", (eid, etype, now_iso()))
         db.commit()
+    obj = event.get("data", {}).get("object", {})
     if etype == "checkout.session.completed":
-        obj = event.get("data", {}).get("object", {})
         if obj.get("payment_status") == "paid" and obj.get("id"):
             if db.execute("SELECT 1 FROM payments WHERE order_id=?", (obj["id"],)).fetchone():
-                return grant_once(db, obj["id"])
+                return grant_once(db, obj["id"], stripe_sub_id=obj.get("subscription"), customer_id=obj.get("customer"))
+    elif etype == "invoice.paid":
+        if obj.get("billing_reason") == "subscription_cycle":
+            return _renew_from_invoice(db, obj)
+    elif etype == "customer.subscription.deleted":
+        db.execute("UPDATE subscriptions SET status='cancelled', cancelled_at=? WHERE stripe_sub_id=? AND status='active'",
+                   (now_iso(), obj.get("id")))
+        db.commit()
+        return {"cancelled": obj.get("id")}
     return {"ignored": etype}
 
 
