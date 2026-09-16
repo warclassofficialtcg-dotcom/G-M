@@ -1,0 +1,48 @@
+# Pubblicazione di G & M su Render (https://render.com) - hosting Python gratuito.
+#
+#   1. carica la cartella su GitHub (o usa "Deploy from ZIP" non è disponibile: serve un repository)
+#   2. su Render: New + -> Blueprint -> collega il repository. Render legge questo file.
+#   3. in Environment compila le variabili "sync: false" qui sotto.
+#
+# PIANO GRATUITO: il servizio dorme dopo 15 minuti senza traffico (prima apertura lenta)
+# e NON ha disco: il database riparte da zero a ogni deploy. Per tenere i dati veri:
+# plan: starter + togli i commenti al blocco "disk" e alla variabile DATA_DIR.
+services:
+  - type: web
+    name: gm-prenotazioni
+    runtime: python
+    plan: free
+    region: frankfurt
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.6"
+      - key: APP_NAME
+        value: "G & M"
+      - key: OWNER_WHATSAPP
+        value: "393933379797"
+      - key: BASE_URL              # l'indirizzo che Render ti assegna, es. https://gm-prenotazioni.onrender.com
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      # Stripe (vedi .env.example)
+      - key: PAYMENTS_PROVIDER
+        value: simulated
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      # - key: DATA_DIR
+      #   value: /var/data
+    # disk:
+    #   name: gm-data
+    #   mountPath: /var/data
+    #   sizeGB: 1

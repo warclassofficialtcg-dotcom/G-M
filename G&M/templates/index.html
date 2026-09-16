@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<title>{{ APP_NAME }} · Prenotazioni</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v={{ STATIC_V }}">
+<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="64x64" href="/static/icons/favicon-64.png">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="{{ APP_NAME }}">
+<meta name="mobile-web-app-capable" content="yes">
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+  <symbol id="i-dumbbell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5v14M18 5v14M3 8v8M21 8v8M6 12h12"/></symbol>
+  <symbol id="i-spa" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c-4-3-8-6.5-8-11a8 8 0 0 1 16 0c0 4.5-4 8-8 11z"/><path d="M12 22V11"/><path d="M8.5 14c1.2-1 2.4-1.5 3.5-1.5s2.3.5 3.5 1.5"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></symbol>
+  <symbol id="i-whatsapp" viewBox="0 0 24 24" fill="currentColor"><path d="M17.5 14.4c-.3-.1-1.8-.9-2-1-.3-.1-.5-.1-.7.1-.2.3-.8 1-.9 1.2-.2.2-.3.2-.6.1-.3-.1-1.3-.5-2.4-1.5-.9-.8-1.5-1.8-1.7-2.1-.2-.3 0-.5.1-.6l.4-.5c.2-.2.2-.3.3-.5.1-.2 0-.4 0-.5l-.9-2.2c-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.5s1.1 2.9 1.2 3.1c.1.2 2.1 3.2 5.1 4.5 2.5 1 3 .8 3.6.8.6-.1 1.8-.7 2-1.4.2-.7.2-1.3.2-1.4-.1-.2-.3-.3-.6-.4zM12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.5 0-3-.4-4.3-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2z"/></symbol>
+</svg>
+
+<!-- ======================= AUTENTICAZIONE ======================= -->
+<section id="view-auth" class="auth-wrap hidden">
+  <div class="auth-card">
+    <div class="brand">
+      <img class="logo-img" src="/static/icons/icon-192.png" alt="{{ APP_NAME }}" width="72" height="72">
+      <h1>{{ APP_NAME }}</h1>
+      <p class="muted">Allenamenti e massaggi, su appuntamento.</p>
+    </div>
+
+    <div class="segmented">
+      <button class="seg active" data-auth="login">Accedi</button>
+      <button class="seg" data-auth="register">Registrati</button>
+    </div>
+
+    <form id="form-login" class="auth-form">
+      <label>Email <input type="email" name="email" required autocomplete="email" placeholder="nome@email.it"></label>
+      <label>Password <input type="password" name="password" required autocomplete="current-password" placeholder="••••••••"></label>
+      <button class="btn primary full lg" type="submit">Accedi</button>
+    </form>
+
+    <form id="form-register" class="auth-form hidden">
+      <label>Nome e cognome <input type="text" name="name" required autocomplete="name" placeholder="Mario Rossi"></label>
+      <label>Email <input type="email" name="email" required autocomplete="email" placeholder="nome@email.it"></label>
+      <label>Telefono (WhatsApp) <input type="tel" name="phone" placeholder="333 1234567" autocomplete="tel"></label>
+      <label>Password <input type="password" name="password" minlength="6" required autocomplete="new-password" placeholder="almeno 6 caratteri"></label>
+      <button class="btn primary full lg" type="submit">Crea account</button>
+    </form>
+
+    <p id="auth-error" class="alert warn hidden"></p>
+  </div>
+</section>
+
+<!-- ======================= APP ======================= -->
+<div id="view-app" class="hidden">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand-inline">
+        <img class="logo-img sm" src="/static/icons/icon-192.png" alt="" width="32" height="32">
+        <span>{{ APP_NAME }}</span>
+      </div>
+      <div class="topbar-right">
+        <span id="user-avatar" class="avatar" title=""></span>
+        <span id="user-name" class="user-name"></span>
+        <button id="btn-logout" class="icon-btn" title="Esci"><svg><use href="#i-logout"/></svg></button>
+      </div>
+    </div>
+  </header>
+
+  <nav class="mainnav">
+    <button class="navbtn active" data-view="calendar"><svg><use href="#i-calendar"/></svg><span>Calendario</span></button>
+    <button class="navbtn" data-view="training"><svg><use href="#i-dumbbell"/></svg><span>Allenamento</span></button>
+    <button class="navbtn" data-view="massage"><svg><use href="#i-spa"/></svg><span>Massaggi</span></button>
+    <button class="navbtn" data-view="mine"><svg><use href="#i-list"/></svg><span>I miei</span></button>
+    <button class="navbtn hidden" data-view="admin" id="nav-admin"><svg><use href="#i-settings"/></svg><span>Gestione</span></button>
+  </nav>
+
+  <main class="content">
+
+    <!-- CALENDARIO -->
+    <section id="view-calendar" class="view">
+      <div class="page-head">
+        <h1>Calendario</h1>
+        <p class="muted">Palestra: Lun–Ven 11–13 · 15–19, Sab 11–16 &nbsp;|&nbsp; Massaggi: Lun–Ven 10–19, Sab 10–13</p>
+      </div>
+      <div id="booking-mode" class="alert info hidden"></div>
+      <div class="card">
+        <div class="week-nav">
+          <button class="icon-btn" id="week-prev" title="Settimana precedente"><svg style="transform:rotate(180deg)"><use href="#i-chevron"/></svg></button>
+          <div class="week-title" id="week-title"></div>
+          <button class="icon-btn" id="week-next" title="Settimana successiva"><svg><use href="#i-chevron"/></svg></button>
+        </div>
+        <div class="grid-wrap" id="grid"></div>
+        <div class="legend">
+          <span><i class="dot free"></i> Libero</span>
+          <span><i class="dot palestra"></i> Palestra</span>
+          <span><i class="dot massaggio"></i> Massaggio</span>
+          <span><i class="dot pending"></i> In attesa</span>
+          <span><i class="dot closed"></i> Non prenotabile</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ALLENAMENTO -->
+    <section id="view-training" class="view hidden">
+      <div class="page-head"><h1>Allenamento</h1></div>
+      <div id="package-box"></div>
+      <button class="btn primary full lg" id="btn-book-training">Prenota un allenamento</button>
+      <div class="card">
+        <h2>Scheda allenamento</h2>
+        <pre id="sheet-workout" class="sheet"></pre>
+      </div>
+      <div class="card">
+        <h2>Dieta</h2>
+        <pre id="sheet-diet" class="sheet"></pre>
+      </div>
+      <div class="card">
+        <h2>Listino</h2>
+        <div id="payments-notice"></div>
+        <ul class="pricelist" id="pricelist"></ul>
+      </div>
+      <div class="card">
+        <h2>I tuoi pagamenti</h2>
+        <div id="my-payments"></div>
+      </div>
+    </section>
+
+    <!-- MASSAGGI -->
+    <section id="view-massage" class="view hidden">
+      <div class="page-head"><h1>Massaggi</h1></div>
+      <div id="massage-package-box"></div>
+      <button class="btn primary full lg" id="btn-book-massage">Prenota un massaggio</button>
+      <div id="massage-catalog"></div>
+      <div class="card">
+        <h2>Percorsi mensili</h2>
+        <p class="small muted" style="margin-top:-.4rem">Massaggi a scelta libera dal listino, validità 30 giorni.</p>
+        <div id="massage-payments-notice"></div>
+        <ul class="pricelist" id="massage-pricelist"></ul>
+      </div>
+      <div class="card">
+        <h2>I tuoi massaggi</h2>
+        <div id="my-massages"></div>
+      </div>
+    </section>
+
+    <!-- I MIEI APPUNTAMENTI -->
+    <section id="view-mine" class="view hidden">
+      <div class="page-head"><h1>I miei appuntamenti</h1></div>
+      <div class="card">
+        <div id="my-appointments"></div>
+      </div>
+    </section>
+
+    <!-- ADMIN -->
+    <section id="view-admin" class="view hidden">
+      <div class="page-head"><h1>Gestione</h1></div>
+      <div class="segmented">
+        <button class="seg active" data-admin="pending">Richieste</button>
+        <button class="seg" data-admin="upcoming">Prossimi</button>
+        <button class="seg" data-admin="users">Clienti</button>
+        <button class="seg" data-admin="payments">Pagamenti</button>
+      </div>
+      <div class="card" id="admin-pending"></div>
+      <div class="card hidden" id="admin-upcoming"></div>
+      <div class="card hidden" id="admin-users"></div>
+      <div class="card hidden" id="admin-payments"></div>
+      <div class="card hidden" id="admin-user-detail"></div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ======================= MODALE PRENOTAZIONE ======================= -->
+<div id="modal" class="modal hidden">
+  <div class="modal-box">
+    <button class="modal-close" id="modal-close" aria-label="Chiudi">✕</button>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="/static/app.js?v={{ STATIC_V }}"></script>
+</body>
+</html>

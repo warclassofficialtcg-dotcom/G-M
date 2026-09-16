@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ APP_NAME }} · Conferma appuntamento</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
+<link rel="stylesheet" href="/static/style.css?v={{ STATIC_V }}">
+</head>
+<body class="confirm-page">
+<main class="card confirm-card">
+  <div class="brand" style="margin-bottom:.6rem">
+    <img class="logo-img" src="/static/icons/icon-192.png" alt="{{ APP_NAME }}" width="72" height="72">
+    <h1>Richiesta appuntamento</h1>
+  </div>
+
+  {% if message %}
+    <div class="alert {{ 'ok' if '✅' in message else 'warn' }}">{{ message }}</div>
+  {% endif %}
+
+  {% if appt %}
+    <div class="confirm-details">
+      <span class="badge {{ appt.type }}">{{ 'Palestra' if appt.type == 'palestra' else 'Massaggio' }}</span>
+      <div class="when">{{ appt.date_label }}<br>ore {{ appt.time_label }}</div>
+      <p><strong>{{ appt.user_name }}</strong>
+        {% if appt.user_phone %}<br><a href="tel:{{ appt.user_phone }}">{{ appt.user_phone }}</a>{% endif %}
+        <br><span class="muted small">{{ appt.user_email }}</span></p>
+      <p class="small">Stato:
+        <span class="status-{{ appt.status }}">
+          {% if appt.status == 'pending' %}In attesa
+          {% elif appt.status == 'confirmed' %}Confermato
+          {% elif appt.status == 'rejected' %}Rifiutato
+          {% else %}Annullato{% endif %}
+        </span>
+        {% if appt.joined %}<br><span class="muted">Si è unito a una lezione già confermata.</span>{% endif %}
+      </p>
+      {% if others %}
+        <p class="small muted">Nello stesso orario: {{ others | join(', ') }}</p>
+      {% endif %}
+    </div>
+
+    {% if appt.status in ['pending', 'confirmed'] %}
+    <form method="post" class="confirm-actions">
+      {% if appt.status == 'pending' %}
+      <button class="btn primary" name="action" value="confirm">Conferma</button>
+      {% endif %}
+      <button class="btn danger" name="action" value="reject"
+              onclick="return confirm('Rifiutare questo appuntamento?')">Rifiuta</button>
+    </form>
+    {% endif %}
+  {% endif %}
+
+  <p class="muted center small" style="margin-top:1.2rem"><a href="/">Apri {{ APP_NAME }}</a></p>
+</main>
+</body>
+</html>
