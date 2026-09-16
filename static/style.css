@@ -307,6 +307,21 @@ table.hours td { font-variant-numeric: tabular-nums; font-weight: 600; line-heig
 table.hours td.closed { color: #d99a9a; font-weight: 500; }
 table.hours tr.note td { font-size: .68rem; color: var(--muted); font-weight: 500; text-align: left; padding-top: .35rem; border-top: 1px solid var(--border); }
 
+/* iscritti palestra (admin) */
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: .5rem; margin-bottom: 1rem; }
+.stat-tile { background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: .6rem .5rem; text-align: center; }
+.stat-tile .n { display: block; font-size: 1.3rem; font-weight: 800; letter-spacing: -.02em; }
+.stat-tile .l { display: block; font-size: .66rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; line-height: 1.2; }
+.stat-tile.ok .n { color: var(--ok); }
+.stat-tile.warn .n { color: var(--pending); }
+@media (max-width: 480px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+.avatar.sm { width: 36px; height: 36px; font-size: .8rem; flex: 0 0 auto; }
+.member .title .badge { margin-left: .2rem; }
+.file-item .file-icon { width: 36px; height: 36px; border-radius: 10px; background: #fde8e8; color: #c0392b; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.file-item .file-icon svg { width: 18px; height: 18px; }
+.file-item .title { word-break: break-word; }
+input[type="file"] { padding: .45rem .5rem; font-size: .85rem; }
+
 /* barra modalità (prenotazione / spostamento) */
 .modebar {
   display: flex; align-items: center; gap: .75rem; padding: .75rem .9rem; margin-bottom: 1rem;

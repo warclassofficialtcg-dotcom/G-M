@@ -468,8 +468,68 @@
   }
 
   // ------------------------------------------------------------ Allenamento
+  function fileItem(f, admin = false) {
+    const kb = f.size > 1024 * 1024 ? (f.size / 1048576).toFixed(1) + " MB" : Math.round(f.size / 1024) + " KB";
+    return `<div class="item file-item">
+      <div class="file-icon"><svg><use href="#i-pdf"/></svg></div>
+      <div class="main">
+        <div class="title"><span class="badge ${f.kind === "dieta" ? "massaggio" : "palestra"}">${esc(f.kind_label)}</span> ${esc(f.filename)}</div>
+        <div class="sub">${f.uploaded_at.replace("T", " ").slice(0, 16)} · ${kb}</div>
+      </div>
+      <div class="btn-row" style="margin:0">
+        <a class="btn small" href="/api/files/${f.id}" target="_blank" rel="noopener">Apri</a>
+        <a class="btn small ghost" href="/api/files/${f.id}?dl=1">Scarica</a>
+        ${admin ? `<button class="btn danger small" data-delfile="${f.id}">Elimina</button>` : ""}
+      </div>
+    </div>`;
+  }
+
+  async function renderGymAdmin() {
+    const box = $("#gym-members");
+    box.innerHTML = `<p class="muted">Caricamento…</p>`;
+    const r = await api("/api/admin/gym");
+    const active = r.members.filter((m) => m.package && m.package.active).length;
+    box.innerHTML = `
+      <div class="stats">
+        <div class="stat-tile"><span class="n">${r.members.length}</span><span class="l">iscritti</span></div>
+        <div class="stat-tile ok"><span class="n">${active}</span><span class="l">abbonamenti attivi</span></div>
+        <div class="stat-tile warn"><span class="n">${r.members.length - active}</span><span class="l">scaduti</span></div>
+        <div class="stat-tile"><span class="n">${r.without_package}</span><span class="l">registrati senza abbonamento</span></div>
+      </div>
+      ${r.members.length ? `<div class="members">` + r.members.map((m) => {
+        const p = m.package;
+        const st = !p ? "" : p.active ? (p.days_left <= 7 ? `<span class="badge pending">scade tra ${p.days_left} g</span>` : `<span class="badge confirmed">attivo</span>`) : `<span class="badge cancelled">scaduto</span>`;
+        return `<div class="item clickable member" data-user="${m.id}">
+          <div class="avatar sm">${esc(m.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase())}</div>
+          <div class="main">
+            <div class="title">${esc(m.name)} ${st}</div>
+            <div class="sub">${p ? `${esc(p.info.label.split(" – ")[0])} · ${p.info.per_week}/sett · dal ${fmtShort(p.start_date)} al ${fmtShort(p.end_date)}` : "—"}</div>
+            <div class="sub">Iscritto il ${fmtShort(m.registered_at)}${m.first_start ? ` · primo abbonamento ${fmtShort(m.first_start)}` : ""} · ${m.n_files} file</div>
+          </div>
+          <svg class="arrow"><use href="#i-chevron"/></svg>
+        </div>`;
+      }).join("") + `</div>` : `<p class="empty">Nessun iscritto con abbonamento palestra. I clienti registrati senza abbonamento sono in Gestione → Clienti.</p>`}
+      <p class="small muted" style="margin-top:.8rem">Tocca un iscritto per vedere il profilo, inserire un abbonamento o caricare scheda e dieta in PDF.</p>`;
+    $$("[data-user]", box).forEach((el) => el.addEventListener("click", () => {
+      state.adminTab = "users";
+      showView("admin");
+      openUserDetail(el.dataset.user);
+    }));
+  }
+
+  function fmtShort(iso) {
+    const d = new Date(iso + "T00:00:00");
+    return d.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric" });
+  }
+
   function renderTraining() {
     const me = state.me;
+    const isAdmin = me.user.role === "admin";
+    $("#training-admin").classList.toggle("hidden", !isAdmin);
+    $("#training-user").classList.toggle("hidden", isAdmin);
+    if (isAdmin) { renderGymAdmin(); return; }
+    const files = me.files || [];
+    $("#my-files").innerHTML = files.length ? files.map((f) => fileItem(f)).join("") : `<p class="empty">Nessun file ancora caricato.</p>`;
     const box = $("#package-box");
     const gp = me.gym_package || {};
     const sub = null;  // rinnovo automatico disattivato: si ripaga il mese a mano
@@ -696,10 +756,37 @@
       <textarea id="ta-diet" placeholder="Scrivi qui la dieta…">${esc(r.sheets.diet)}</textarea>
       <div class="btn-row"><button class="btn primary" id="btn-save-sheets">Salva scheda e dieta</button></div>
 
+      <h3 style="margin-top:1rem">File PDF (scheda / dieta)</h3>
+      <div id="user-files">${r.files.length ? r.files.map((f) => fileItem(f, true)).join("") : `<p class="empty">Nessun file caricato.</p>`}</div>
+      <form id="form-file" class="card" style="background:var(--surface-2);box-shadow:none;margin-top:.8rem">
+        <div style="display:grid;grid-template-columns:1fr 2fr;gap:.5rem">
+          <label>Tipo <select name="kind"><option value="scheda">Scheda allenamento</option><option value="dieta">Dieta</option><option value="altro">Altro</option></select></label>
+          <label>File PDF <input type="file" name="file" accept="application/pdf,.pdf" required></label>
+        </div>
+        <button class="btn primary" type="submit">Carica PDF</button>
+        <span class="small muted" style="margin-left:.6rem">max 15 MB · lo vede solo questo cliente</span>
+      </form>
+
       <h3 style="margin-top:1rem">Ultimi appuntamenti</h3>
       <div id="user-appts">${r.appointments.length ? r.appointments.map((a) => appointmentItem(a, {})).join("") : `<p class="empty">Nessun appuntamento.</p>`}</div>
     `;
     $("#back-users").addEventListener("click", renderAdmin);
+    $("#form-file").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = e.target.querySelector("button"); btn.disabled = true; btn.textContent = "Caricamento…";
+      try {
+        const res = await fetch(`/api/admin/users/${uid}/files`, { method: "POST", body: new FormData(e.target), credentials: "same-origin" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Errore");
+        toast("PDF caricato");
+        openUserDetail(uid);
+      } catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = "Carica PDF"; }
+    });
+    $$("[data-delfile]", box).forEach((b) => b.addEventListener("click", async () => {
+      if (!confirm("Eliminare questo file?")) return;
+      await api(`/api/admin/files/${b.dataset.delfile}`, { method: "DELETE" });
+      openUserDetail(uid);
+    }));
     $$("[data-delpkg]", box).forEach((b) => b.addEventListener("click", async () => {
       if (!confirm("Eliminare questo pacchetto?")) return;
       await api(`/api/admin/packages/${b.dataset.delpkg}`, { method: "DELETE" });

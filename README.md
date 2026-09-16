@@ -47,7 +47,8 @@ Web-app per la prenotazione di allenamenti e massaggi con conferma del titolare 
 **Titolare**
 - Riceve il messaggio WhatsApp, clicca il link → pagina con **Conferma / Rifiuta** (non serve login).
 - Dopo la conferma l'appuntamento appare nel calendario generale.
-- Sezione **Gestione** (dopo login con l'email admin): richieste in attesa, appuntamenti confermati, elenco clienti; per ogni cliente può inserire pacchetti, scrivere scheda e dieta.
+- Sezione **Allenamento** (per il titolare): elenco **iscritti in palestra** con abbonamento, data di iscrizione, scadenza e stato; toccando un iscritto si apre il profilo dove caricare **PDF di scheda e dieta** (li vede solo quel cliente, nella sua sezione Allenamento → I tuoi file).
+- Sezione **Gestione**: richieste in attesa, appuntamenti confermati, elenco clienti (con pacchetti, scheda/dieta testuali, PDF), pagamenti.
 
 Listino pacchetti (`PACKAGES`), catalogo massaggi (`MASSAGES`) e orari (`GYM_HOURS`, `MASSAGE_HOURS`) si modificano in cima ad `app.py`.
 
@@ -75,7 +76,7 @@ I prezzi sono IVA inclusa (`VAT_RATE=0.22`); i pacchetti inseriti a mano dal tit
 3. In **Environment** compila: `BASE_URL` (l'indirizzo che Render ti dà, es. `https://gm-prenotazioni.onrender.com`), `ADMIN_EMAIL`, `ADMIN_PASSWORD`; per gli incassi `PAYMENTS_PROVIDER=stripe` e le chiavi Stripe.
 4. Apri l'indirizzo: la prima apertura sul piano gratuito può richiedere 30-60 secondi.
 
-Piano gratuito: nessun disco, quindi **il database si azzera a ogni deploy**. Per tenere clienti e prenotazioni: `plan: starter` e togli i commenti a `DATA_DIR` e al blocco `disk` in `render.yaml`.
+Piano gratuito: nessun disco, quindi **database e PDF caricati si azzerano a ogni deploy**. Per tenere clienti e prenotazioni: `plan: starter` e togli i commenti a `DATA_DIR` e al blocco `disk` in `render.yaml`.
 
 Tutta la configurazione può arrivare da variabili d'ambiente (`APP_NAME`, `OWNER_WHATSAPP`, `BASE_URL`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `SECRET_KEY`, `MAX_GYM_PER_SLOT`, `DATA_DIR`), che hanno la precedenza su `config.json`.
 

@@ -11,7 +11,7 @@ from datetime import date, datetime, timedelta
 from functools import wraps
 from urllib.parse import quote
 
-from flask import Flask, g, jsonify, redirect, render_template, request, session
+from flask import Flask, abort, g, jsonify, redirect, render_template, request, send_file, session
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -22,6 +22,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("DATA_DIR") or BASE_DIR
 os.makedirs(DATA_DIR, exist_ok=True)
 DB_PATH = os.path.join(DATA_DIR, "gym.db")
+UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")   # PDF di schede e diete caricati dal titolare
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+MAX_PDF_MB = 15
 CONFIG_PATH = os.path.join(DATA_DIR, "config.json")
 
 # ---------------------------------------------------------------------------
@@ -72,6 +75,7 @@ app.json.sort_keys = False  # mantiene l'ordine del listino
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)  # dietro il proxy dell'hosting: https e host corretti
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+app.config["MAX_CONTENT_LENGTH"] = MAX_PDF_MB * 1024 * 1024
 
 # ---------------------------------------------------------------------------
 # Costanti di business
@@ -180,7 +184,17 @@ CREATE TABLE IF NOT EXISTS appointments (
     decided_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_app_date ON appointments(date, hour);
+CREATE TABLE IF NOT EXISTS files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    kind TEXT NOT NULL,            -- 'scheda' | 'dieta' | 'altro'
+    filename TEXT NOT NULL,        -- nome originale
+    stored TEXT NOT NULL,          -- nome su disco
+    size INTEGER NOT NULL,
+    uploaded_at TEXT NOT NULL
+);
 """
+FILE_KINDS = {"scheda": "Scheda allenamento", "dieta": "Dieta", "altro": "Altro"}
 MIGRATIONS = [
     "ALTER TABLE appointments ADD COLUMN massage_type TEXT",
 ]
@@ -302,6 +316,11 @@ def massage_limit(db, user_id, on: date):
         if info and info.get("per_month"):
             return info["per_month"], p
     return None, None
+
+
+def user_files(db, user_id):
+    rows = db.execute("SELECT id,kind,filename,size,uploaded_at FROM files WHERE user_id=? ORDER BY id DESC", (user_id,)).fetchall()
+    return [{**dict(r), "kind_label": FILE_KINDS.get(r["kind"], r["kind"])} for r in rows]
 
 
 def gym_package_status(db, user_id):
@@ -511,6 +530,7 @@ def api_me():
         payments=payments.status(),
         payment_history=payments.history(db, u["id"]),
         gym_package=gym_package_status(db, u["id"]),
+        files=user_files(db, u["id"]),
     )
 
 
@@ -817,6 +837,89 @@ def admin_users():
     return jsonify(users=out)
 
 
+@app.get("/api/admin/gym")
+@admin_required
+def admin_gym():
+    """Iscritti in palestra: chi ha (o ha avuto) un abbonamento mensile, con stato e scadenza."""
+    db = get_db()
+    today = date.today().isoformat()
+    rows = db.execute(
+        "SELECT u.id, u.name, u.email, u.phone, u.created_at, "
+        "  (SELECT MIN(start_date) FROM packages p WHERE p.user_id=u.id AND p.type IN ('70','80')) AS first_start, "
+        "  (SELECT COUNT(*) FROM files f WHERE f.user_id=u.id) AS n_files "
+        "FROM users u WHERE u.role='user' AND EXISTS (SELECT 1 FROM packages p WHERE p.user_id=u.id AND p.type IN ('70','80')) "
+        "ORDER BY u.name").fetchall()
+    out = []
+    for r in rows:
+        cur = db.execute(
+            "SELECT * FROM packages WHERE user_id=? AND type IN ('70','80') ORDER BY end_date DESC LIMIT 1", (r["id"],)
+        ).fetchone()
+        active = cur and cur["start_date"] <= today <= cur["end_date"]
+        out.append({
+            "id": r["id"], "name": r["name"], "email": r["email"], "phone": r["phone"],
+            "registered_at": r["created_at"][:10], "first_start": r["first_start"], "n_files": r["n_files"],
+            "package": {**dict(cur), "info": PACKAGES.get(cur["type"]), "active": bool(active),
+                        "days_left": (date.fromisoformat(cur["end_date"]) - date.today()).days + 1} if cur else None,
+        })
+    others = db.execute(
+        "SELECT COUNT(*) FROM users u WHERE u.role='user' AND NOT EXISTS "
+        "(SELECT 1 FROM packages p WHERE p.user_id=u.id AND p.type IN ('70','80'))").fetchone()[0]
+    return jsonify(members=out, without_package=others)
+
+
+@app.post("/api/admin/users/<int:uid>/files")
+@admin_required
+def admin_upload_file(uid):
+    db = get_db()
+    if not db.execute("SELECT 1 FROM users WHERE id=?", (uid,)).fetchone():
+        return jsonify(error="Utente non trovato"), 404
+    f = request.files.get("file")
+    kind = request.form.get("kind", "altro")
+    if kind not in FILE_KINDS:
+        kind = "altro"
+    if not f or not f.filename:
+        return jsonify(error="Seleziona un file PDF"), 400
+    head = f.stream.read(5)
+    f.stream.seek(0)
+    if not f.filename.lower().endswith(".pdf") or head != b"%PDF-":
+        return jsonify(error="Solo file PDF"), 400
+    stored = f"{uid}_{secrets.token_hex(8)}.pdf"
+    path = os.path.join(UPLOAD_DIR, stored)
+    f.save(path)
+    db.execute("INSERT INTO files(user_id,kind,filename,stored,size,uploaded_at) VALUES (?,?,?,?,?,?)",
+               (uid, kind, f.filename[:120], stored, os.path.getsize(path), now_iso()))
+    db.commit()
+    return jsonify(ok=True, files=user_files(db, uid))
+
+
+@app.delete("/api/admin/files/<int:fid>")
+@admin_required
+def admin_delete_file(fid):
+    db = get_db()
+    row = db.execute("SELECT * FROM files WHERE id=?", (fid,)).fetchone()
+    if not row:
+        return jsonify(error="File non trovato"), 404
+    try:
+        os.remove(os.path.join(UPLOAD_DIR, row["stored"]))
+    except OSError:
+        pass
+    db.execute("DELETE FROM files WHERE id=?", (fid,))
+    db.commit()
+    return jsonify(ok=True)
+
+
+@app.get("/api/files/<int:fid>")
+@login_required
+def get_file(fid):
+    """Il PDF lo apre solo il proprietario (o il titolare)."""
+    db = get_db()
+    row = db.execute("SELECT * FROM files WHERE id=?", (fid,)).fetchone()
+    if not row or (row["user_id"] != g.user["id"] and g.user["role"] != "admin"):
+        abort(404)
+    return send_file(os.path.join(UPLOAD_DIR, row["stored"]), mimetype="application/pdf",
+                     as_attachment=request.args.get("dl") == "1", download_name=row["filename"])
+
+
 @app.get("/api/admin/users/<int:uid>")
 @admin_required
 def admin_user_detail(uid):
@@ -834,6 +937,7 @@ def admin_user_detail(uid):
         sheets={"workout": sheets["workout"] if sheets else "", "diet": sheets["diet"] if sheets else ""},
         packages=[{**dict(p), "info": PACKAGES.get(p["type"])} for p in pkgs],
         appointments=[appt_dict(a) for a in appts],
+        files=user_files(db, uid),
     )
 
 
@@ -847,7 +951,7 @@ def admin_add_package(uid):
         return jsonify(error="Pacchetto non valido"), 400
     try:
         start = date.fromisoformat(data.get("start_date"))
-        end = date.fromisoformat(data.get("end_date")) if data.get("end_date") else start + timedelta(days=30)
+        end = date.fromisoformat(data.get("end_date")) if data.get("end_date") else payments.period_from(start)[1]
     except (ValueError, TypeError):
         return jsonify(error="Date non valide"), 400
     if end < start:
