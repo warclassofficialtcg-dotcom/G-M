@@ -6,9 +6,9 @@ COSA SI VENDE
     30€ scheda, 30€ dieta). Pagato il pacchetto, viene inserita una riga nella
     tabella `packages` dell'utente valida UN MESE ESATTO dal giorno del pagamento:
     la stessa riga che il titolare può inserire a mano dalla sezione Gestione.
-    Gli abbonamenti mensili (palestra) si possono pagare una volta sola oppure
-    con RINNOVO AUTOMATICO (Stripe Subscription): a ogni fattura pagata arriva
-    un nuovo mese; il cliente può disdire dall'app.
+    L'abbonamento palestra si ripaga a mano ogni mese (nessun rinnovo
+    automatico). Il codice per le Stripe Subscription resta qui sotto,
+    disattivato: start_purchase rifiuta recurring=True.
 
 COME FUNZIONA L'INCASSO (stesso schema di SoundUp)
     1. il cliente sceglie un pacchetto -> creiamo una Checkout Session Stripe e
@@ -288,8 +288,8 @@ def start_purchase(db, user, ptype, packages, base_url, app_name, recurring=Fals
     info = packages.get(ptype)
     if not info:
         raise ValueError("Pacchetto non valido")
-    if recurring and not info.get("monthly"):
-        raise ValueError("Questo pacchetto non prevede il rinnovo automatico")
+    if recurring:
+        raise ValueError("Il rinnovo automatico non è disponibile: si ripaga il mese manualmente")
     kind = "subscription" if recurring else "one_off"
 
     if provider() == "simulated":

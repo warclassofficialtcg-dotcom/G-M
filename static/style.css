@@ -295,7 +295,47 @@ optgroup { font-weight: 700; }
 .hero .stat + .stat { margin-left: .4rem; }
 .buy-group { display: flex; flex-direction: column; gap: .35rem; align-items: stretch; }
 .buy-group .btn { white-space: nowrap; }
-.wa-preview { margin-bottom: .6rem; border-left: 3px solid var(--wa); }
+/* tabella orari */
+.hours-card { padding: .6rem .9rem; }
+table.hours { width: 100%; border-collapse: collapse; font-size: .82rem; text-align: center; }
+table.hours th, table.hours td { padding: .4rem .3rem; }
+table.hours thead th { color: var(--muted); font-weight: 600; font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid var(--border); }
+table.hours tbody th { text-align: left; font-weight: 600; display: flex; align-items: center; gap: .4rem; color: var(--text-2); }
+table.hours tbody th svg { width: 15px; height: 15px; color: var(--muted); }
+table.hours tbody tr + tr td, table.hours tbody tr + tr th { border-top: 1px dashed var(--border); }
+table.hours td { font-variant-numeric: tabular-nums; font-weight: 600; line-height: 1.3; }
+table.hours td.closed { color: #d99a9a; font-weight: 500; }
+
+/* barra modalità (prenotazione / spostamento) */
+.modebar {
+  display: flex; align-items: center; gap: .75rem; padding: .75rem .9rem; margin-bottom: 1rem;
+  border-radius: 14px; background: var(--palestra-bg); border: 1px solid #cddcff; color: var(--text);
+}
+.modebar.move { background: var(--pending-bg); border-color: #f3d9a8; }
+.modebar-icon { width: 36px; height: 36px; border-radius: 10px; background: #fff; display: flex; align-items: center; justify-content: center; color: var(--palestra); flex: 0 0 auto; }
+.modebar.move .modebar-icon { color: var(--pending); }
+.modebar-body { flex: 1; min-width: 0; }
+.modebar-title { font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; color: var(--muted); }
+.modebar-text { font-size: .88rem; line-height: 1.35; }
+.modebar-text .from { color: var(--text-2); }
+.modebar .btn.ghost { color: var(--text-2); }
+
+/* blocco da → a nella finestra di spostamento */
+.move-box { display: flex; align-items: stretch; gap: .5rem; margin: .4rem 0 .9rem; }
+.move-col { flex: 1; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: .6rem .7rem; display: flex; flex-direction: column; gap: 1px; }
+.move-col .lbl { font-size: .66rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
+.move-col strong { font-size: .88rem; }
+.move-col span:last-child { font-size: .85rem; color: var(--text-2); }
+.move-col.to { background: var(--ok-bg); border-color: #b9e6d0; }
+.move-col.to .lbl { color: var(--ok); }
+.move-arrow { display: flex; align-items: center; color: var(--muted); font-weight: 700; }
+
+/* anteprima messaggio WhatsApp */
+.wa-card { border: 1px solid #c9ecd6; border-radius: 12px; overflow: hidden; margin: .4rem 0 .9rem; background: #f3fbf6; }
+.wa-head { display: flex; align-items: center; gap: .4rem; padding: .45rem .75rem; background: #e2f6ea; color: #1b7a48; font-size: .75rem; font-weight: 700; }
+.wa-head svg { width: 15px; height: 15px; }
+.wa-body { padding: .7rem .8rem; white-space: pre-wrap; font-size: .86rem; line-height: 1.45; }
+.wa-foot { padding: .35rem .75rem .5rem; font-size: .72rem; color: var(--muted); }
 .hero h2 { color: #fff; margin-bottom: .3rem; }
 .hero p { color: rgba(255,255,255,.8); font-size: .92rem; margin-bottom: 1rem; }
 .hero .lbl { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; opacity: .75; font-weight: 600; }

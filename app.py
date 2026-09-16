@@ -504,7 +504,6 @@ def api_me():
         app_name=CONFIG.get("APP_NAME", "G & M"),
         payments=payments.status(),
         payment_history=payments.history(db, u["id"]),
-        subscription=payments.active_subscription(db, u["id"]),
         gym_package=gym_package_status(db, u["id"]),
     )
 
@@ -746,20 +745,10 @@ def api_payments_start():
     data = request.get_json(silent=True) or {}
     try:
         r = payments.start_purchase(get_db(), g.user, data.get("type"), PACKAGES,
-                                    base_url(), CONFIG.get("APP_NAME", "G & M"),
-                                    recurring=bool(data.get("recurring")))
+                                    base_url(), CONFIG.get("APP_NAME", "G & M"))
     except ValueError as e:
         return jsonify(error=str(e)), 400
     return jsonify(r)
-
-
-@app.post("/api/payments/subscription/cancel")
-@login_required
-def api_subscription_cancel():
-    try:
-        return jsonify(payments.cancel_subscription(get_db(), g.user["id"]))
-    except ValueError as e:
-        return jsonify(error=str(e)), 400
 
 
 @app.get("/api/payments/return")

@@ -37,7 +37,7 @@ Web-app per la prenotazione di allenamenti e massaggi con conferma del titolare 
 **Regole**
 - Massaggio: l'orario è esclusivo. Se c'è già qualcuno (palestra o massaggio) non è prenotabile.
 - Palestra: se nell'orario c'è già un massaggio non è prenotabile. Se c'è già una lezione confermata, ci si unisce direttamente (fino a `MAX_GYM_PER_SLOT` persone).
-- **Palestra solo con abbonamento attivo** (70€ = 2/settimana, 80€ = 3/settimana): senza abbonamento valido nel giorno scelto la prenotazione viene rifiutata e l'app rimanda alla sezione Allenamento. L'abbonamento vale **un mese esatto dal giorno del pagamento** (se ne paghi uno mentre l'attuale è ancora valido, il nuovo parte dalla scadenza). Si può pagare un mese alla volta oppure attivare il **rinnovo automatico** (Stripe addebita ogni mese; disdetta dall'app in un click).
+- **Palestra solo con abbonamento attivo** (70€ = 2/settimana, 80€ = 3/settimana): senza abbonamento valido nel giorno scelto la prenotazione viene rifiutata e l'app rimanda alla sezione Allenamento. L'abbonamento vale **un mese esatto dal giorno del pagamento** (se ne paghi uno mentre l'attuale è ancora valido, il nuovo parte dalla scadenza). Alla scadenza si ripaga il mese dalla sezione Allenamento (nessun addebito automatico).
 - I massaggi non richiedono abbonamento: con un percorso attivo vale il limite di 4/6 massaggi nel periodo.
 - Prima di confermare, la finestra di prenotazione mostra l'**anteprima del messaggio WhatsApp** già compilato con giorno, ora e trattamento.
 - Da "I miei" ogni appuntamento ha **Sposta**: si apre il calendario con gli orari disponibili evidenziati, si tocca il nuovo orario e l'appuntamento viene spostato (torna "in attesa" e il titolare riceve su WhatsApp il messaggio con vecchio e nuovo orario).
@@ -58,7 +58,7 @@ Stesso schema di SoundUp: Stripe Checkout, nessuna libreria, webhook firmato, at
 1. Copia `.env.example` in `.env` e compila:
    - `PAYMENTS_PROVIDER=stripe` (lascia `simulated` per provare senza addebiti: il pulsante "Acquista" attiva subito il pacchetto)
    - `STRIPE_SECRET_KEY` e `STRIPE_PUBLISHABLE_KEY` da dashboard.stripe.com → Developers → API keys (copia la chiave **intera** col pulsante di copia)
-   - `STRIPE_WEBHOOK_SECRET`: Developers → Webhooks → Add endpoint → URL `<PUBLIC_URL>/api/payments/stripe-webhook`, eventi `checkout.session.completed`, `invoice.paid`, `customer.subscription.deleted` → Signing secret
+   - `STRIPE_WEBHOOK_SECRET`: Developers → Webhooks → Add endpoint → URL `<PUBLIC_URL>/api/payments/stripe-webhook`, evento `checkout.session.completed` → Signing secret
    - `PUBLIC_URL` (se vuoto usa `BASE_URL`)
 2. Il cliente, in **Allenamento → Listino**, clicca *Acquista* → paga su Stripe → torna sull'app con il pacchetto attivo (30 giorni; un rinnovo anticipato parte alla scadenza di quello in corso).
 3. Il titolare vede tutto in **Gestione → Pagamenti** (totale incassato, imponibile/IVA per riga). Aprendo la scheda vengono anche recuperati eventuali pagamenti rimasti in sospeso.

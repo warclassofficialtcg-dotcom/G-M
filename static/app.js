@@ -169,16 +169,29 @@
     const mode = $("#booking-mode");
     if (state.moveAppt) {
       const m = state.moveAppt;
-      mode.innerHTML = `Stai <strong>spostando</strong> ${esc(m.massage_name || typeLabel(m.type))} di ${m.date_label} alle ${m.time_label}:
-        tocca il nuovo orario nel calendario. <a href="#" id="clear-mode">annulla</a>`;
+      mode.className = "modebar move";
+      mode.innerHTML = `
+        <div class="modebar-icon"><svg><use href="#i-move"/></svg></div>
+        <div class="modebar-body">
+          <div class="modebar-title">Spostamento appuntamento</div>
+          <div class="modebar-text"><span class="badge ${m.type}">${esc(m.massage_name || typeLabel(m.type))}</span>
+            <span class="from">${esc(m.date_label)} · ${m.time_label}</span> → <strong>tocca il nuovo orario</strong></div>
+        </div>
+        <button class="btn small ghost" id="clear-mode">Annulla</button>`;
       mode.classList.remove("hidden");
-      $("#clear-mode").addEventListener("click", (e) => { e.preventDefault(); state.moveAppt = null; state.bookingType = null; renderCalendar(); });
+      $("#clear-mode").addEventListener("click", () => { state.moveAppt = null; state.bookingType = null; state.bookingService = null; renderCalendar(); });
     } else if (state.bookingType) {
       const svc = state.bookingService && state.me.massages[state.bookingService];
-      mode.innerHTML = `Stai prenotando ${svc ? `<strong>${esc(svc.name)}</strong>` : `un <strong>${typeLabel(state.bookingType).toLowerCase()}</strong>`}: scegli giorno e orario.
-        <a href="#" id="clear-mode">annulla</a>`;
+      mode.className = "modebar";
+      mode.innerHTML = `
+        <div class="modebar-icon"><svg><use href="#${state.bookingType === "palestra" ? "i-dumbbell" : "i-spa"}"/></svg></div>
+        <div class="modebar-body">
+          <div class="modebar-title">Nuova prenotazione</div>
+          <div class="modebar-text">${svc ? `<strong>${esc(svc.name)}</strong> · ${svc.price}€` : `<strong>${typeLabel(state.bookingType)}</strong>`} → scegli giorno e orario</div>
+        </div>
+        <button class="btn small ghost" id="clear-mode">Annulla</button>`;
       mode.classList.remove("hidden");
-      $("#clear-mode").addEventListener("click", (e) => { e.preventDefault(); state.bookingType = null; state.bookingService = null; renderCalendar(); });
+      $("#clear-mode").addEventListener("click", () => { state.bookingType = null; state.bookingService = null; renderCalendar(); });
     } else {
       mode.classList.add("hidden");
     }
@@ -244,9 +257,14 @@
     const tipo = m ? `MASSAGGIO – ${m.name} (${m.price}€)` : type === "palestra" ? "PALESTRA" : "MASSAGGIO";
     const when = `${day.weekday} ${String(day.day).padStart(2, "0")}/${day.month}/${day.date.slice(0, 4)} alle ${String(hour).padStart(2, "0")}:00`;
     const mv = state.moveAppt;
-    if (mv) return `Ciao! Sono ${me.user.name}.\nHo spostato il mio appuntamento *${tipo}*\n❌ da ${mv.date_label} alle ${mv.time_label}\n✅ a ${when}\nConferma o rifiuta qui: [link di conferma]`;
-    if (joinLesson) return `Ciao! Sono ${me.user.name}.\nMi unisco alla lezione di *${tipo}* di ${when}.\nDettagli: [link]`;
-    return `Ciao! Sono ${me.user.name}.\nRichiesta appuntamento *${tipo}*\n📅 ${when}\nConferma o rifiuta qui: [link di conferma]`;
+    if (mv) return `Ciao! Sono ${me.user.name}.\nHo spostato il mio appuntamento *${tipo}*\n❌ da ${mv.date_label} alle ${mv.time_label}\n✅ a ${when}`;
+    if (joinLesson) return `Ciao! Sono ${me.user.name}.\nMi unisco alla lezione di *${tipo}* di ${when}.`;
+    return `Ciao! Sono ${me.user.name}.\nRichiesta appuntamento *${tipo}*\n📅 ${when}`;
+  }
+
+  // il testo del messaggio senza la riga del link (il link viaggia solo dentro WhatsApp)
+  function stripLink(text) {
+    return text.split("\n").filter((l) => !/https?:\/\//.test(l)).join("\n");
   }
 
   function openBooking(day, slot) {
@@ -289,8 +307,12 @@
     if (sel === "massaggio" && !canMassage) sel = canGym ? "palestra" : null;
 
     openModal(`
-      <h2>${mv ? "Sposta a: " : ""}${day.weekday} ${day.day}/${day.month} · ${slot.label}</h2>
-      ${mv ? `<p class="small muted">Attuale: ${esc(mv.massage_name || typeLabel(mv.type))} · ${mv.date_label} alle ${mv.time_label}</p>` : ""}
+      <h2>${mv ? "Sposta appuntamento" : `${day.weekday} ${day.day}/${day.month} · ${slot.label}`}</h2>
+      ${mv ? `<div class="move-box">
+          <div class="move-col"><span class="lbl">Da</span><strong>${esc(mv.date_label.split(" ")[0])} ${esc(mv.date_label.split(" ")[1])}</strong><span>${mv.time_label}</span></div>
+          <div class="move-arrow">→</div>
+          <div class="move-col to"><span class="lbl">A</span><strong>${day.weekday} ${String(day.day).padStart(2, "0")}/${day.month}/${day.date.slice(0, 4)}</strong><span>${slot.label}</span></div>
+        </div>` : ""}
       ${listHtml}${msg}
       ${(canGym || canMassage) ? `
         <p class="small muted">Tipo di appuntamento</p>
@@ -305,9 +327,11 @@
                 .map(([k, m]) => `<option value="${k}" ${k === state.bookingService ? "selected" : ""}>${esc(m.name)} · ${m.price}€</option>`).join("")}</optgroup>`).join("")}
             </select></label>
         </div>
-        <p class="small muted" style="margin-bottom:.2rem">Anteprima del messaggio WhatsApp che invierai al titolare:</p>
-        <div class="wa-text wa-preview" id="wa-preview"></div>
-        <p class="small muted">Dopo la conferma si apre WhatsApp con questo messaggio già scritto; il titolare riceve il link per confermare.</p>
+        <div class="wa-card">
+          <div class="wa-head"><svg><use href="#i-whatsapp"/></svg> ${mv ? "Avviso di spostamento per il titolare" : "Messaggio per il titolare"}</div>
+          <div class="wa-body" id="wa-preview"></div>
+          <div class="wa-foot">+ link di conferma, aggiunto automaticamente</div>
+        </div>
         <button class="btn primary full lg" id="btn-confirm-booking" ${sel ? "" : "disabled"}>${mv ? "Sposta qui" : "Conferma prenotazione"}</button>
       ` : ""}
     `);
@@ -354,7 +378,7 @@
     openModal(`
       <h2>Serve l'abbonamento mensile</h2>
       <p>${esc(text)}</p>
-      <p class="small muted">L'abbonamento vale un mese esatto dal giorno del pagamento. Puoi pagare un mese alla volta oppure attivare il rinnovo automatico.</p>
+      <p class="small muted">L'abbonamento vale un mese esatto dal giorno del pagamento; alla scadenza si ripaga dalla sezione Allenamento.</p>
       <button class="btn primary full lg" id="btn-go-training">Vai all'abbonamento</button>
       <button class="btn full" id="btn-np-close" style="margin-bottom:0">Chiudi</button>
     `);
@@ -372,12 +396,15 @@
       ${r.joined
         ? `<p>La lezione era già confermata: il tuo posto è nel calendario. Avvisa comunque il titolare su WhatsApp.</p>`
         : `<p>Ora <strong>invia il messaggio su WhatsApp</strong> al titolare: riceverà il link per confermare. Quando conferma, l'appuntamento comparirà nel calendario generale.</p>`}
-      ${r.no_package ? `<p class="alert warn small">${a.type === "massaggio" ? "Nessun percorso mensile attivo: il massaggio si paga in studio (o attiva un percorso dalla sezione Massaggi)." : "Non risulta un pacchetto mensile attivo: concorda il pagamento con il titolare."}</p>` : ""}
+      ${r.no_package && !moved ? `<p class="alert warn small">${a.type === "massaggio" ? "Nessun percorso mensile attivo: il massaggio si paga in studio (o attiva un percorso dalla sezione Massaggi)." : "Non risulta un pacchetto mensile attivo: concorda il pagamento con il titolare."}</p>` : ""}
       <a class="btn whatsapp full lg" href="${r.whatsapp_url}" target="_blank" rel="noopener" style="text-decoration:none">
         <svg><use href="#i-whatsapp"/></svg> ${win ? "Riapri WhatsApp" : "Invia su WhatsApp"}
       </a>
-      <p class="small muted" style="margin:.8rem 0 .2rem">Messaggio:</p>
-      <div class="wa-text">${esc(r.whatsapp_text)}</div>
+      <div class="wa-card" style="margin-top:.8rem">
+        <div class="wa-head"><svg><use href="#i-whatsapp"/></svg> Testo del messaggio</div>
+        <div class="wa-body">${esc(stripLink(r.whatsapp_text))}</div>
+        <div class="wa-foot">Il link di conferma è incluso nel messaggio WhatsApp.</div>
+      </div>
       <button class="btn full" id="btn-done" style="margin-top:.8rem;margin-bottom:0">Chiudi</button>
     `);
     $("#btn-done").addEventListener("click", closeModal);
@@ -443,7 +470,7 @@
     const me = state.me;
     const box = $("#package-box");
     const gp = me.gym_package || {};
-    const sub = me.subscription;
+    const sub = null;  // rinnovo automatico disattivato: si ripaga il mese a mano
     const extras = me.packages.filter((p) => p.info && p.info.family === "extra");
     let html = "";
     if (gp.active) {
@@ -454,30 +481,19 @@
         <div class="val">${esc(me.catalog[gp.type].label.split(" – ")[0])} · ${gp.per_week} allenamenti a settimana</div>
         <div class="meta">Scade ${fmtDate(gp.end_date)} · ${gp.days_left} giorn${gp.days_left === 1 ? "o" : "i"} rimanent${gp.days_left === 1 ? "e" : "i"}</div>
         <span class="stat">${weekAppts.length} allenament${weekAppts.length === 1 ? "o" : "i"} in programma</span>
-        ${sub ? `<span class="stat">↻ Rinnovo automatico attivo</span>` : soon ? `<span class="stat warn">⚠ In scadenza: rinnova qui sotto</span>` : ""}
+        ${soon ? `<span class="stat warn">⚠ In scadenza: rinnova dal listino qui sotto</span>` : ""}
       </div>`;
     } else {
       html += `<div class="hero expired">
         <div class="lbl">Abbonamento</div>
         <div class="val">${gp.expired ? "Abbonamento scaduto" : "Nessun abbonamento attivo"}</div>
-        <div class="meta">${gp.expired ? `Scaduto ${fmtDate(gp.expired.end_date)}. ` : ""}Per prenotare gli allenamenti serve l'abbonamento mensile: vale un mese esatto dal giorno del pagamento.</div>
+        <div class="meta">${gp.expired ? `Scaduto ${fmtDate(gp.expired.end_date)}. ` : ""}Per prenotare gli allenamenti serve l'abbonamento mensile: vale un mese esatto dal giorno del pagamento e si ripaga qui sotto.</div>
       </div>`;
-    }
-    if (sub) {
-      html += `<p class="small" style="margin:-.4rem 0 1rem">Rinnovo automatico ${sub.provider === "simulated" ? "(prova) " : ""}sul ${esc(me.catalog[sub.package_type].label.split(" – ")[0])}: a ogni scadenza viene addebitato il mese successivo.
-        <a href="#" id="btn-cancel-sub">Disdici il rinnovo</a></p>`;
     }
     if (extras.length) {
       html += `<p class="small" style="margin:-.4rem 0 1rem">Servizi attivi: ${extras.map((p) => `<span class="badge palestra">${esc(p.info.label)}</span>`).join(" ")}</p>`;
     }
     box.innerHTML = html;
-    const cs = $("#btn-cancel-sub");
-    if (cs) cs.addEventListener("click", async (e) => {
-      e.preventDefault();
-      if (!confirm("Disdire il rinnovo automatico? Il mese già pagato resta valido fino alla scadenza.")) return;
-      try { await api("/api/payments/subscription/cancel", { method: "POST", body: {} }); toast("Rinnovo automatico disdetto"); await refreshMe(); renderTraining(); }
-      catch (err) { toast(err.message, true); }
-    });
 
     $("#sheet-workout").textContent = me.sheets.workout || "La tua scheda non è ancora stata caricata dal titolare.";
     $("#sheet-diet").textContent = me.sheets.diet || "La tua dieta non è ancora stata caricata dal titolare.";
@@ -493,10 +509,7 @@
           <div class="sub">${p.per_week ? `${p.per_week} allenamenti a settimana · un mese dal pagamento` : "validità un mese"}</div>
         </div>
         <strong class="price">${p.price}€${p.monthly ? "<span class='muted small'>/mese</span>" : ""}</strong>
-        ${canBuy ? (p.monthly
-          ? `<span class="buy-group"><button class="btn primary small" data-buy="${k}">Paga 1 mese</button>
-             <button class="btn small" data-buy="${k}" data-recurring="1" ${sub ? "disabled" : ""} title="Addebito automatico ogni mese, disdici quando vuoi">↻ Rinnovo automatico</button></span>`
-          : `<button class="btn primary small" data-buy="${k}">Acquista</button>`) : ""}
+        ${canBuy ? `<button class="btn primary small" data-buy="${k}">${p.monthly ? (gp.active && gp.type === k ? "Rinnova" : "Paga il mese") : "Acquista"}</button>` : ""}
       </li>`).join("");
     bindBuyButtons($("#pricelist"));
 
@@ -509,8 +522,7 @@
     $$("[data-buy]", root).forEach((b) => b.addEventListener("click", async () => {
       b.disabled = true;
       try {
-        if (b.dataset.recurring && !confirm("Attivare il rinnovo automatico? Ogni mese verrà addebitato l'importo dell'abbonamento; puoi disdire in qualsiasi momento dalla sezione Allenamento.")) { b.disabled = false; return; }
-        const r = await api("/api/payments/start", { method: "POST", body: { type: b.dataset.buy, recurring: !!b.dataset.recurring } });
+        const r = await api("/api/payments/start", { method: "POST", body: { type: b.dataset.buy } });
         location.href = r.url;
       } catch (e) { toast(e.message, true); b.disabled = false; }
     }));
