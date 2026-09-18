@@ -38,7 +38,7 @@ DEFAULT_CONFIG = {
     "ADMIN_EMAIL": "admin@palestra.it",
     "ADMIN_PASSWORD": "admin123",          # CAMBIALA!
     "BASE_URL": "http://localhost:5000",   # indirizzo pubblico dell'app (usato nel link di conferma)
-    "MAX_GYM_PER_SLOT": 4,                 # persone massime nella stessa ora di palestra
+    "MAX_GYM_PER_SLOT": 2,                 # persone massime nella stessa ora di palestra (classe completa)
     "PORT": 5000,
 }
 
@@ -127,9 +127,14 @@ DAY_NAMES = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabat
 ACTIVE_STATUSES = ("pending", "confirmed")
 
 
+MONDAY_OPEN_FROM = 15   # il lunedì mattina è chiuso: si prenota solo dalle 15 in poi
+
+
 def hours_for(d: date, typ: str):
     wd = d.weekday()
     table = GYM_HOURS if typ == "palestra" else MASSAGE_HOURS
+    if wd == 0:
+        return [h for h in table["weekday"] if h >= MONDAY_OPEN_FROM]
     if wd <= 4:
         return table["weekday"]
     if wd == 5:

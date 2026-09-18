@@ -23,6 +23,8 @@ services:
         value: "G & M"
       - key: OWNER_WHATSAPP
         value: "393933379797"
+      - key: MAX_GYM_PER_SLOT
+        value: "2"
       - key: BASE_URL              # l'indirizzo che Render ti assegna, es. https://gm-prenotazioni.onrender.com
         sync: false
       - key: ADMIN_EMAIL

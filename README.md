@@ -16,7 +16,7 @@ Web-app per la prenotazione di allenamenti e massaggi con conferma del titolare 
   "ADMIN_EMAIL": "admin@palestra.it", // email con cui accedi come titolare
   "ADMIN_PASSWORD": "admin123",       // CAMBIALA prima di darla ai clienti
   "BASE_URL": "http://localhost:5000",// indirizzo pubblico del sito (vedi "Pubblicazione")
-  "MAX_GYM_PER_SLOT": 4,              // persone massime nella stessa ora di palestra
+  "MAX_GYM_PER_SLOT": 2,              // persone massime nella stessa ora di palestra (classe completa)
   "PORT": 5000
 }
 ```
@@ -30,7 +30,7 @@ Web-app per la prenotazione di allenamenti e massaggi con conferma del titolare 
 - Si registra con nome, email, telefono e password.
 - Sezione **Allenamento**: pacchetto attivo, scheda, dieta, listino (70€ = 2/settimana, 80€ = 3/settimana, 30€ scheda o dieta).
 - Sezione **Servizi** (Allenamenti + Massaggi nella stessa schermata, con due pulsanti in alto per saltare alla parte voluta): abbonamenti palestra, listino massaggi dal volantino (olistici/estetici e tecnici/sportivi, con benefici e prezzi), percorsi mensili Standard 150€ (4 massaggi) e Benessere 200€ (6 massaggi) acquistabili online, i propri massaggi.
-- **Calendario** settimanale unico con orari diversi per tipo — palestra Lun–Ven 11–12 e 15–19, Sab 11–12 e 15–16; massaggi Lun–Ven 10–12 e 15–19, Sab 10–12 (13–15 pausa tutti i giorni) — clicca il giorno → l'ora → Palestra o Massaggio (con scelta del trattamento) → **Prenota**.
+- **Calendario** settimanale unico con orari diversi per tipo — palestra Lun–Ven 11–12 e 15–19, Sab 11–12 e 15–16; massaggi Lun–Ven 10–12 e 15–19, Sab 10–12 (13–15 pausa tutti i giorni; lunedì mattina chiuso, si prenota dalle 15) — clicca il giorno → l'ora → Palestra o Massaggio (con scelta del trattamento) → **Prenota**.
   Si apre WhatsApp con il messaggio già pronto da inviare al titolare (contiene il link di conferma).
 - Il calendario è visibile a tutti: mostra chi si allena e quando, e permette di **unirsi a una lezione** già confermata.
 
